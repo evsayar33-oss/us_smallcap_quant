@@ -13,11 +13,10 @@ warnings.filterwarnings('ignore')
 GECMIS_DOSYA = "gecmis_veri.csv"
 
 # =============================================================================
-# 1. TRADINGVIEW ABD (AMERICA) PİYASA VE SEKTÖR VERİSİ
+# 1. TRADINGVIEW ABD PİYASA, SEKTÖR VE ESAS FAALİYET KÂRI VERİSİ
 # =============================================================================
 
 def get_us_smallcap_data():
-    """TradingView US tarayıcısından Russell 2000 ölçekli şirketleri çeker."""
     url = "https://scanner.tradingview.com/america/scan"
     payload = {
         "filter": [
@@ -39,7 +38,8 @@ def get_us_smallcap_data():
             "Perf.1M",
             "Perf.W",
             "sector",
-            "industry"
+            "industry",
+            "operating_margin" # 🛡️ ESAS FAALİYET MARJI (SAHTE KÂR KALKANI)
         ],
         "sort": {"sortBy": "Value.Traded", "sortOrder": "desc"},
         "range": [0, 500]
@@ -76,6 +76,7 @@ def get_us_smallcap_data():
                 "perf_w": float(d[17]) if len(d) > 17 and d[17] is not None else 0.0,
                 "sector": str(d[18]) if len(d) > 18 and d[18] is not None else "Genel",
                 "industry": str(d[19]) if len(d) > 19 and d[19] is not None else "Genel",
+                "oper_margin": float(d[20]) if len(d) > 20 and d[20] is not None else 10.0,
                 "tarih": pd.Timestamp.now().normalize()
             })
         return pd.DataFrame(rows)
@@ -95,7 +96,6 @@ def calculate_us_quant_scores(df, df_gecmis, state):
     thresholds = state.get("thresholds", {})
     min_roe = thresholds.get("min_roe", 12.0)
 
-    # Piyasa medyanı (Alpha ve rölatif performans için)
     market_perf_median = float(df['perf_1m'].median())
     scored_data = []
 
@@ -118,35 +118,34 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         perf_w = float(item.get('perf_w', 0.0))
         sector = item.get('sector', '')
         industry = item.get('industry', '')
+        oper_margin = float(item.get('oper_margin', 10.0))
 
-        # 52 Haftalık Taban Geometrisi
         dist_from_52w_low = ((close - low_52w) / (low_52w + 1e-9)) * 100.0 if low_52w > 0 else 0.0
         target_cup = round(high_52w, 2)
         target_bagger = round(close * 2.50, 2)
         stop_price = round(low_52w * 0.96, 2)
         potansiyel_cup = round(((target_cup - close) / close) * 100.0, 1)
 
-        # =====================================================================
-        # 🛡️ YENİ AMERİKAN ZIRHLARI: BİYOTEKNOLOJİ & RÖLATİF BIÇAK
-        # =====================================================================
-        
-        # 1. Biyoteknoloji / FDA Kumar Kalkanı:
-        # Geliri oturmamış, FDA kararına bağlı kumar biyoteknolojileri elenir
+        # 🛡️ 1. ESAS FAALİYET KÂRI KALKANI:
+        # Şirket arsa/varlık satıp net kâr yazsa bile faaliyet marjı <%5 ise elenir!
+        is_fake_profit = (oper_margin < 5.0)
+
+        # 🛡️ 2. BİYOTEKNOLOJİ / FDA KUMAR KALKANI:
         is_binary_biotech = False
         if "biotechnology" in industry.lower() or "pharmaceuticals" in industry.lower():
-            if pe <= 0 or pe > 35.0 or roe < 20.0:
+            if pe <= 0 or pe > 35.0 or roe < 20.0 or oper_margin < 10.0:
                 is_binary_biotech = True
 
-        # 2. Endeks Rölatif Düşen Bıçak:
+        # 🛡️ 3. RÖLATİF DÜŞEN BIÇAK FİLTRESİ:
         rel_perf_1m = perf_1m - market_perf_median
         is_falling_knife = False
-        if rel_perf_1m < -14.0: # Piyasadan bağımsız çöküyorsa
+        if rel_perf_1m < -14.0:
             is_falling_knife = True
-        elif close <= low_52w * 1.004: # Yeni dip kırılımı yapıyorsa
+        elif close <= low_52w * 1.004:
             is_falling_knife = True
 
-        # 3. Zombi ve Aşırı Prim Filtresi
-        is_zombie = (roe < min_roe) or (pb <= 0.0)
+        # 4. Zombi ve Aşırı Prim Filtresi
+        is_zombie = (roe < min_roe) or (pb <= 0.0) or is_fake_profit
         is_overextended = (perf_y > 150.0) or (dist_from_52w_low > 45.0)
 
         # 1. Makro Taban Skoru
@@ -158,17 +157,17 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         elif dist_from_52w_low <= 35.0:
             score_base = 65.0
 
-        # 2. Kalite & Kârlılık Skoru
+        # 2. Kalite Skoru
         score_quality = 30.0
-        if roe >= 25.0: score_quality += 45.0
-        elif roe >= 15.0: score_quality += 30.0
-        elif roe >= min_roe: score_quality += 15.0
+        if roe >= 25.0 and oper_margin >= 15.0: score_quality += 45.0
+        elif roe >= 15.0 and oper_margin >= 8.0: score_quality += 30.0
+        elif roe >= min_roe and oper_margin >= 5.0: score_quality += 15.0
 
         if 0 < pe <= 18.0: score_quality += 25.0
         elif 0 < pe <= 30.0: score_quality += 10.0
         score_quality = min(max(score_quality, 5.0), 100.0)
 
-        # 3. Kapanış Gücü & Hacim Akışı (CLV)
+        # 3. Kapanış Gücü & Hacim Akışı
         range_span = high - low
         clv = ((close - low) - (high - close)) / range_span if range_span > 0 else 0.0
         score_flow = round(min(max((max(clv, 0.0) * 70.0) + (min(rvol, 3.0) * 10.0), 10.0), 98.0), 1)
@@ -186,9 +185,10 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         item['score_quality'] = score_quality
         item['score_flow'] = score_flow
         item['score_ignition'] = score_ignition
-        item['is_disqualified'] = is_zombie or is_overextended or is_falling_knife or is_binary_biotech
+        item['is_disqualified'] = is_zombie or is_overextended or is_falling_knife or is_binary_biotech or is_fake_profit
         item['is_biotech'] = is_binary_biotech
         item['is_knife'] = is_falling_knife
+        item['is_fake'] = is_fake_profit
         scored_data.append(item)
 
     res_df = pd.DataFrame(scored_data)
@@ -220,6 +220,7 @@ def calculate_us_quant_scores(df, df_gecmis, state):
     )
 
     conditions = [
+        res_df['is_fake'],
         res_df['is_biotech'],
         res_df['is_knife'],
         res_df['is_disqualified'],
@@ -227,6 +228,7 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         (res_df['quant_score'] >= 50.0)
     ]
     choices = [
+        "⚠️ SAHTE KÂR (FAALİYET KÂRI YETERSİZ)",
         "⚠️ BİYOTEK TUZAĞI (FDA RİSKİ)",
         "🪤 DÜŞEN BIÇAK (RÖLATİF ÇÖKÜŞ)",
         "⚠️ ELENDİ (ZOMBİ VEYA PRİMLİ)",
@@ -235,7 +237,7 @@ def calculate_us_quant_scores(df, df_gecmis, state):
     ]
     res_df['regime'] = np.select(conditions, choices, default="NÖTR")
 
-    drop_cols = ['pct_base', 'pct_qual', 'pct_flow', 'pct_ign', 'is_disqualified', 'is_biotech', 'is_knife']
+    drop_cols = ['pct_base', 'pct_qual', 'pct_flow', 'pct_ign', 'is_disqualified', 'is_biotech', 'is_knife', 'is_fake']
     res_df = res_df.drop(columns=[col for col in drop_cols if col in res_df.columns])
 
     res_df['score_diff'] = 0.0
@@ -269,6 +271,7 @@ def log_lifecycle_signals(df_scored, state):
                 "stop_price": float(row["stop_price"]),
                 "target_cup": float(row["target_cup"]),
                 "target_bagger": float(row["target_bagger"]),
+                "last_seen_price": float(row["close"]),
                 "quant_score": float(row["quant_score"]),
                 "regime": row["regime"],
                 "score_base": float(row.get("score_base", 50.0)),
@@ -297,7 +300,7 @@ def log_lifecycle_signals(df_scored, state):
         print(f"⚠️ Yaşam döngüsü hatası: {e}")
 
 # =============================================================================
-# 4. TELEGRAM RAPORU (SEKTÖR VE ÇIKIŞ BİLDİRİMLİ)
+# 4. TELEGRAM RAPORU (PORTFÖY ÇIKIŞ VE ZIRH BİLDİRİMLİ)
 # =============================================================================
 
 def send_telegram(message):
@@ -323,16 +326,26 @@ def format_telegram_report(df_scored, state, exit_alerts):
     msg += f"🤖 <b>AI Durumu:</b> <code>{audit.get('status', 'AKTİF')}</code>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
+    # 1. ÇIKIŞ VE KÂR AL BİLDİRİMLERİ
     if exit_alerts:
         msg += "🚨 <b>PORTFÖY KORUMA & ÇIKIŞ SİNYALLERİ</b>\n"
         for alert in exit_alerts:
-            icon = "🟢" if "TAKE_PROFIT" in alert["type"] or "TARGET" in alert["type"] else "🔴"
+            a_type = alert.get("type", "")
+            if "TAKE_PROFIT" in a_type or "TARGET" in a_type:
+                icon = "🟢"
+            elif "TIME_STOP" in a_type:
+                icon = "🟡"
+            elif "SPLIT" in a_type:
+                icon = "🔵"
+            else:
+                icon = "🔴"
             msg += f"{icon} <b>#{alert['ticker']}</b> ── {alert['msg']}\n"
         msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     else:
         msg += "🛡️ <b>Açık Pozisyonlar:</b> Tüm US hisseleri güvenli bölgede kuluçkaya devam ediyor.\n"
         msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
+    # 2. YENİ LİDERLER
     msg += "💎 <b>GÜNÜN YENİ US KULUÇKA LİDERLERİ</b>\n"
     if leaders.empty:
         msg += "ℹ️ <i>Bugün 52 haftalık tabanda yeni uyanış yapan kârlı US Small-Cap hisse bulunamadı.</i>\n\n"
@@ -351,7 +364,7 @@ def format_telegram_report(df_scored, state, exit_alerts):
             msg += f"📊 ROE: <b>%{row.get('roe', 0):.1f}</b> | F/K: <b>{row.get('pe', 0):.1f}</b> | RVOL: <b>{row.get('rvol', 1.0):.2f}x</b>\n\n"
 
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "🛡️ <i>Zırh Koruması: FDA onayına bağlı kumar biyoteknolojileri, kârsız zombiler ve düşen bıçaklar elenmiştir.</i>"
+    msg += "🛡️ <i>3'lü Otomatik Zırh: Split Dedektörü, Esas Faaliyet Kalkanı ve 90 Gün Zaman Stopu devrededir.</i>"
     return msg
 
 # =============================================================================
