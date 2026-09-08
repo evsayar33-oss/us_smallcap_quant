@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 GECMIS_DOSYA = "gecmis_veri.csv"
 
 # =============================================================================
-# 1. TRADINGVIEW ABD (AMERICA) PİYASA VERİSİ ÇEKİCİ
+# 1. TRADINGVIEW ABD (AMERICA) PİYASA VE SEKTÖR VERİSİ
 # =============================================================================
 
 def get_us_smallcap_data():
@@ -35,7 +35,11 @@ def get_us_smallcap_data():
             "price_earnings_ttm",
             "price_book_fq",
             "Perf.Y",
-            "relative_volume_10d_calc"
+            "relative_volume_10d_calc",
+            "Perf.1M",
+            "Perf.W",
+            "sector",
+            "industry"
         ],
         "sort": {"sortBy": "Value.Traded", "sortOrder": "desc"},
         "range": [0, 500]
@@ -68,6 +72,10 @@ def get_us_smallcap_data():
                 "pb": float(d[13]) if d[13] is not None else 2.0,
                 "perf_y": float(d[14]) if d[14] is not None else 0.0,
                 "rvol": float(d[15]) if len(d) > 15 and d[15] is not None else 1.0,
+                "perf_1m": float(d[16]) if len(d) > 16 and d[16] is not None else 0.0,
+                "perf_w": float(d[17]) if len(d) > 17 and d[17] is not None else 0.0,
+                "sector": str(d[18]) if len(d) > 18 and d[18] is not None else "Genel",
+                "industry": str(d[19]) if len(d) > 19 and d[19] is not None else "Genel",
                 "tarih": pd.Timestamp.now().normalize()
             })
         return pd.DataFrame(rows)
@@ -76,7 +84,7 @@ def get_us_smallcap_data():
         return pd.DataFrame()
 
 # =============================================================================
-# 2. RUSSELL 2000 MULTI-BAGGER QUANT PUANLAMA
+# 2. RUSSELL 2000 ZIRHLI QUANT PUANLAMA MOTORU
 # =============================================================================
 
 def calculate_us_quant_scores(df, df_gecmis, state):
@@ -87,6 +95,8 @@ def calculate_us_quant_scores(df, df_gecmis, state):
     thresholds = state.get("thresholds", {})
     min_roe = thresholds.get("min_roe", 12.0)
 
+    # Piyasa medyanı (Alpha ve rölatif performans için)
+    market_perf_median = float(df['perf_1m'].median())
     scored_data = []
 
     for idx, row in df.iterrows():
@@ -104,6 +114,10 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         pe = float(item.get('pe', 15.0))
         pb = float(item.get('pb', 2.0))
         perf_y = float(item.get('perf_y', 0.0))
+        perf_1m = float(item.get('perf_1m', 0.0))
+        perf_w = float(item.get('perf_w', 0.0))
+        sector = item.get('sector', '')
+        industry = item.get('industry', '')
 
         # 52 Haftalık Taban Geometrisi
         dist_from_52w_low = ((close - low_52w) / (low_52w + 1e-9)) * 100.0 if low_52w > 0 else 0.0
@@ -112,7 +126,26 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         stop_price = round(low_52w * 0.96, 2)
         potansiyel_cup = round(((target_cup - close) / close) * 100.0, 1)
 
-        # Diskalifiye Kriterleri
+        # =====================================================================
+        # 🛡️ YENİ AMERİKAN ZIRHLARI: BİYOTEKNOLOJİ & RÖLATİF BIÇAK
+        # =====================================================================
+        
+        # 1. Biyoteknoloji / FDA Kumar Kalkanı:
+        # Geliri oturmamış, FDA kararına bağlı kumar biyoteknolojileri elenir
+        is_binary_biotech = False
+        if "biotechnology" in industry.lower() or "pharmaceuticals" in industry.lower():
+            if pe <= 0 or pe > 35.0 or roe < 20.0:
+                is_binary_biotech = True
+
+        # 2. Endeks Rölatif Düşen Bıçak:
+        rel_perf_1m = perf_1m - market_perf_median
+        is_falling_knife = False
+        if rel_perf_1m < -14.0: # Piyasadan bağımsız çöküyorsa
+            is_falling_knife = True
+        elif close <= low_52w * 1.004: # Yeni dip kırılımı yapıyorsa
+            is_falling_knife = True
+
+        # 3. Zombi ve Aşırı Prim Filtresi
         is_zombie = (roe < min_roe) or (pb <= 0.0)
         is_overextended = (perf_y > 150.0) or (dist_from_52w_low > 45.0)
 
@@ -153,7 +186,9 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         item['score_quality'] = score_quality
         item['score_flow'] = score_flow
         item['score_ignition'] = score_ignition
-        item['is_disqualified'] = is_zombie or is_overextended
+        item['is_disqualified'] = is_zombie or is_overextended or is_falling_knife or is_binary_biotech
+        item['is_biotech'] = is_binary_biotech
+        item['is_knife'] = is_falling_knife
         scored_data.append(item)
 
     res_df = pd.DataFrame(scored_data)
@@ -185,18 +220,22 @@ def calculate_us_quant_scores(df, df_gecmis, state):
     )
 
     conditions = [
+        res_df['is_biotech'],
+        res_df['is_knife'],
         res_df['is_disqualified'],
         (res_df['quant_score'] >= 65.0) & (res_df['potansiyel_cup'] >= 45.0),
         (res_df['quant_score'] >= 50.0)
     ]
     choices = [
-        "⚠️ ELENDİ (ZOMBİ VEYA AŞIRI PRİMLİ)",
+        "⚠️ BİYOTEK TUZAĞI (FDA RİSKİ)",
+        "🪤 DÜŞEN BIÇAK (RÖLATİF ÇÖKÜŞ)",
+        "⚠️ ELENDİ (ZOMBİ VEYA PRİMLİ)",
         "🦅 US KULUÇKA LİDERİ (MULTI-BAGGER)",
         "⚡ TABAN BİRİKTİRME (TAKİP)"
     ]
     res_df['regime'] = np.select(conditions, choices, default="NÖTR")
 
-    drop_cols = ['pct_base', 'pct_qual', 'pct_flow', 'pct_ign', 'is_disqualified']
+    drop_cols = ['pct_base', 'pct_qual', 'pct_flow', 'pct_ign', 'is_disqualified', 'is_biotech', 'is_knife']
     res_df = res_df.drop(columns=[col for col in drop_cols if col in res_df.columns])
 
     res_df['score_diff'] = 0.0
@@ -258,7 +297,7 @@ def log_lifecycle_signals(df_scored, state):
         print(f"⚠️ Yaşam döngüsü hatası: {e}")
 
 # =============================================================================
-# 4. TELEGRAM RAPORU (DOLAR BAZLI)
+# 4. TELEGRAM RAPORU (SEKTÖR VE ÇIKIŞ BİLDİRİMLİ)
 # =============================================================================
 
 def send_telegram(message):
@@ -280,7 +319,7 @@ def format_telegram_report(df_scored, state, exit_alerts):
     audit = state.get("audit_summary", {})
     
     msg = "🇺🇸 <b>WALL STREET MULTI-BAGGER & RUSSELL 2000</b>\n"
-    msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Gece Kapanış Raporu (USD)</i>\n"
+    msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Kapanış Raporu (USD)</i>\n"
     msg += f"🤖 <b>AI Durumu:</b> <code>{audit.get('status', 'AKTİF')}</code>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
@@ -301,9 +340,10 @@ def format_telegram_report(df_scored, state, exit_alerts):
         for idx, row in leaders.iterrows():
             s_diff = row.get('score_diff', 0.0)
             fark_str = f"+{s_diff:.1f}" if s_diff > 0 else f"{s_diff:.1f}"
+            sector_name = row.get('sector', 'Diğer')
             
             msg += f"⭐ <b>#{row['ticker']}</b> ── <b>Skor: {row['quant_score']:.1f}</b> <i>({fark_str})</i>\n"
-            msg += f"💵 Fiyat: <b>${row['close']:.2f}</b> (Piyasa Değeri: <b>${row['mcap_milyon']:.0f}M</b>)\n"
+            msg += f"💵 Fiyat: <b>${row['close']:.2f}</b> (Piyasa Değeri: <b>${row['mcap_milyon']:.0f}M</b> | {sector_name})\n"
             msg += f"📍 52H Dip Mesafesi: <b>+%{row['dist_from_52w_low']:.1f}</b> (Derin Taban)\n"
             msg += f"🎯 1. Hedef (Çanak): <b>${row['target_cup']:.2f}</b> (<b>+%{row['potansiyel_cup']:.0f} USD</b>)\n"
             msg += f"🚀 2. Hedef (2.5x): <b>${row['target_bagger']:.2f}</b> (<b>+%150 USD</b>)\n"
@@ -311,7 +351,7 @@ def format_telegram_report(df_scored, state, exit_alerts):
             msg += f"📊 ROE: <b>%{row.get('roe', 0):.1f}</b> | F/K: <b>{row.get('pe', 0):.1f}</b> | RVOL: <b>{row.get('rvol', 1.0):.2f}x</b>\n\n"
 
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "⏳ <i>Yatırım Ufku: 6-12 Ay (Saf Dolar Bazlı Buy & Hold Stratejisi)</i>"
+    msg += "🛡️ <i>Zırh Koruması: FDA onayına bağlı kumar biyoteknolojileri, kârsız zombiler ve düşen bıçaklar elenmiştir.</i>"
     return msg
 
 # =============================================================================
