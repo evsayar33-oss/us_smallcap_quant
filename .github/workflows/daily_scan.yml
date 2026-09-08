@@ -1,0 +1,43 @@
+name: US Russell 2000 Daily Scan & Audit
+
+on:
+  schedule:
+    # Hafta içi her gece TSİ 23:15 (UTC 20:15)
+    - cron: '15 20 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodu Repo'dan Çek
+        uses: actions/checkout@v4
+
+      - name: Python Kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Bağımlılıkları Yükle
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: US Quant Motoru ve Denetçiyi Çalıştır
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          python main.py
+
+      - name: Güncellenen Verileri ve State'i Kaydet (Git Commit)
+        run: |
+          git config --local user.email "quantbot@github.com"
+          git config --local user.name "QuantBot AI"
+          git add -A
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 US QuantBot AI Otonom Güncelleme: $(date -u)" && git push)
