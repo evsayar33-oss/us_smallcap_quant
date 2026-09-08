@@ -7,7 +7,6 @@ from scipy.stats import spearmanr
 from state_manager import load_ai_state, save_ai_state, load_lifecycle_signals, LIFECYCLE_LOG_FILE
 
 def fetch_current_us_snapshot():
-    """TradingView üzerinden ABD piyasa fiyatlarını çeker."""
     url = "https://scanner.tradingview.com/america/scan"
     payload = {
         "filter": [
@@ -80,7 +79,6 @@ def update_signal_lifecycle(df_signals, market_prices, state):
         if days_passed >= 180 and pd.isna(row.get("ret_180d")):
             df_signals.at[idx, "ret_180d"] = round(gain_from_entry, 2)
 
-        # Hedefe İlerleme Oranına Göre Dinamik İzleyen Stop
         total_target_distance = target_p - entry_p
         trailing_stop = initial_stop
 
@@ -173,7 +171,7 @@ def run_feedback_loop_optimization(df_signals, state):
     state["audit_summary"]["total_signals_audited"] = len(mature)
     state["audit_summary"]["win_rate_6m"] = win_rate
     state["audit_summary"]["last_audit_date"] = datetime.now().strftime("%Y-%m-%d")
-    state["audit_summary"]["status"] = f"🧠 US AI KALİBRE EDİLDİ (Win: %{win_rate})"
+    state["audit_summary"]["status"] = f"🧠 US AI KALİBRE EDİLDİ ({len(mature)} Sinyal | WinRate: %{win_rate})"
 
     save_ai_state(state)
     return state
@@ -181,11 +179,26 @@ def run_feedback_loop_optimization(df_signals, state):
 def audit_and_calibrate():
     state = load_ai_state()
     df_signals = load_lifecycle_signals()
+    
+    # 🚨 EĞER HENÜZ 10 OLGUN SİNYAL YOKSA OTOMATİK US BOOTSTRAP ÇALIŞTIR:
+    mature_count = len(df_signals[df_signals["outcome"].isin(["WIN_MULTI_BAGGER", "WIN_CUP_BREAKOUT", "WIN_PROFIT_LOCKED", "FAIL_BASE_BREAKDOWN"])]) if not df_signals.empty else 0
+    
+    if mature_count < 10:
+        try:
+            from bootstrap_us_history import run_us_historical_bootstrap
+            success = run_us_historical_bootstrap()
+            if success:
+                df_signals = load_lifecycle_signals()
+        except Exception as e:
+            print(f"⚠️ US Bootstrap hatası: {e}")
+
     if df_signals.empty:
         return state, []
+
     market_prices = fetch_current_us_snapshot()
     if not market_prices:
         return state, []
+
     df_updated, exit_alerts = update_signal_lifecycle(df_signals, market_prices, state)
     state = run_feedback_loop_optimization(df_updated, state)
     return state, exit_alerts
