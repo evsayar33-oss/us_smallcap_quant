@@ -29,8 +29,9 @@ def load_lifecycle_signals():
     if not os.path.exists(LIFECYCLE_LOG_FILE):
         cols = [
             "tarih", "ticker", "entry_price", "stop_price", "target_cup", "target_bagger",
-            "quant_score", "regime", "score_base", "score_quality", "score_flow", "score_ignition",
-            "ret_30d", "ret_90d", "ret_180d", "max_drawdown", "peak_gain", "outcome"
+            "last_seen_price", "quant_score", "regime", "score_base", "score_quality",
+            "score_flow", "score_ignition", "ret_30d", "ret_90d", "ret_180d",
+            "max_drawdown", "peak_gain", "outcome"
         ]
         return pd.DataFrame(columns=cols)
     try:
