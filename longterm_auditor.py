@@ -82,7 +82,7 @@ def update_signal_lifecycle(df_signals, market_prices, state):
                 exit_alerts.append({
                     "ticker": ticker,
                     "type": "SPLIT_ADJUSTED",
-                    "msg": f"Hisse {split_factor:.1f}x bölündü (Stock Split). Giriş ve hedef fiyatları otomatik güncellendi!"
+                    "msg": f"Hisse {split_factor:.1f}x bölündü (Stock Split). Giriş, stop ve hedefler otomatik güncellendi!"
                 })
 
         df_signals.at[idx, "last_seen_price"] = curr_p
@@ -108,7 +108,7 @@ def update_signal_lifecycle(df_signals, market_prices, state):
         if days_passed >= 180 and pd.isna(row.get("ret_180d")):
             df_signals.at[idx, "ret_180d"] = round(gain_from_entry, 2)
 
-        # İlerlemeye Göre Dinamik İzleyen Stop
+        # İlerlemeye Göre Dinamik İzleyen Stop (Progress Ratio)
         total_target_distance = target_p - entry_p
         trailing_stop = initial_stop
 
@@ -125,18 +125,26 @@ def update_signal_lifecycle(df_signals, market_prices, state):
 
         df_signals.at[idx, "stop_price"] = trailing_stop
 
+        # =====================================================================
+        # 🛡️ 2. ZIRH: OYNAKLIĞA DUYARLI DİNAMİK ZAMAN STOPU (60 - 120 GÜN)
+        # =====================================================================
+        cup_pot = ((target_p - entry_p) / entry_p) * 100.0 if entry_p > 0 else 50.0
+        if cup_pot >= 120.0:
+            max_patience_days = 60   # Atak Wall Street hissesi 60 günde uyanmadıysa çık
+        elif cup_pot <= 50.0:
+            max_patience_days = 120  # Ağır sanayi hissesine 120 gün kuluçka hakkı
+        else:
+            max_patience_days = 90   # Standart süre
+
         curr_status = row.get("outcome", "INCUBATING")
         if curr_status in ["INCUBATING", "PENDING"]:
-            
-            # =================================================================
-            # 🛡️ 2. ZIRH: 90 GÜNLÜK ALGORTİMİK ZAMAN STOPU (TIME STOP)
-            # =================================================================
-            if days_passed >= 90 and peak_gain < 15.0:
+            # Dinamik Zaman Stopu
+            if days_passed >= max_patience_days and peak_gain < 15.0:
                 df_signals.at[idx, "outcome"] = "TIMEOUT_DEAD_INCUBATION"
                 exit_alerts.append({
                     "ticker": ticker,
                     "type": "TIME_STOP",
-                    "msg": f"90 gündür tabandan uyanamadı (Ölü Kuluçka). Zaman stopu tetiklendi; sermayeyi serbest bırakmak için çıkın."
+                    "msg": f"{max_patience_days} gündür tabandan uyanamadı (Ölü Kuluçka). Zaman stopu tetiklendi; sermayeyi serbest bırakın."
                 })
             # Taban Desteği Kırıldı
             elif curr_low <= initial_stop and peak_gain < 15.0:
@@ -206,7 +214,7 @@ def run_feedback_loop_optimization(df_signals, state):
     updated = {}
     for k in current_weights:
         new_w = (1.0 - lr) * current_weights[k] + lr * raw_weights[k]
-        updated[k] = min(max(new_w, 0.10), 0.50)
+        updated[k] = min(max(new_w, 0.08), 0.45)
 
     w_sum = sum(updated.values())
     final_weights = {k: round(v / w_sum, 3) for k, v in updated.items()}
@@ -215,7 +223,7 @@ def run_feedback_loop_optimization(df_signals, state):
     state["audit_summary"]["total_signals_audited"] = len(mature)
     state["audit_summary"]["win_rate_6m"] = win_rate
     state["audit_summary"]["last_audit_date"] = datetime.now().strftime("%Y-%m-%d")
-    state["audit_summary"]["status"] = f"🧠 US AI KALİBRE EDİLDİ ({len(mature)} Sinyal | WinRate: %{win_rate})"
+    state["audit_summary"]["status"] = f"🧠 US AI EĞİTİLDİ ({len(mature)} Sinyal | WinRate: %{win_rate})"
 
     save_ai_state(state)
     return state
