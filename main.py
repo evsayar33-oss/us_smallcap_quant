@@ -39,7 +39,7 @@ def get_us_smallcap_data():
             "Perf.W",
             "sector",
             "industry",
-            "operating_margin" # 🛡️ ESAS FAALİYET MARJI (SAHTE KÂR KALKANI)
+            "operating_margin" # 🛡️ ESAS FAALİYET MARJI KALKANI
         ],
         "sort": {"sortBy": "Value.Traded", "sortOrder": "desc"},
         "range": [0, 500]
@@ -85,18 +85,29 @@ def get_us_smallcap_data():
         return pd.DataFrame()
 
 # =============================================================================
-# 2. RUSSELL 2000 ZIRHLI QUANT PUANLAMA MOTORU
+# 2. REJİM DUYARLI RUSSELL 2000 QUANT MOTORU
 # =============================================================================
 
 def calculate_us_quant_scores(df, df_gecmis, state):
     if df.empty:
         return df
 
-    weights = state.get("weights", {"macro_base": 0.35, "growth_quality": 0.30, "volume_flow": 0.20, "ignition": 0.15})
     thresholds = state.get("thresholds", {})
     min_roe = thresholds.get("min_roe", 12.0)
+    min_oper_margin = thresholds.get("min_oper_margin", 5.0)
 
+    # 1. WALL STREET PİYASA REJİMİ TESPİTİ
     market_perf_median = float(df['perf_1m'].median())
+    if market_perf_median >= 0.0:
+        market_regime = "BOĞA / GENİŞLEME"
+        # Boğada momentum ödüllendirilir
+        weights = {"macro_base": 0.35, "growth_quality": 0.25, "volume_flow": 0.20, "ignition": 0.20}
+    else:
+        market_regime = "AYI / DURGUNLUK"
+        # Ayıda sahte kırılımlara karşı DEFANS MODU (Kârlılık %40 yapılır)
+        weights = {"macro_base": 0.35, "growth_quality": 0.40, "volume_flow": 0.20, "ignition": 0.05}
+
+    state["market_regime"] = market_regime
     scored_data = []
 
     for idx, row in df.iterrows():
@@ -126,17 +137,16 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         stop_price = round(low_52w * 0.96, 2)
         potansiyel_cup = round(((target_cup - close) / close) * 100.0, 1)
 
-        # 🛡️ 1. ESAS FAALİYET KÂRI KALKANI:
-        # Şirket arsa/varlık satıp net kâr yazsa bile faaliyet marjı <%5 ise elenir!
-        is_fake_profit = (oper_margin < 5.0)
+        # 🛡️ 1. ESAS FAALİYET KÂRI KALKANI
+        is_fake_profit = (oper_margin < min_oper_margin)
 
-        # 🛡️ 2. BİYOTEKNOLOJİ / FDA KUMAR KALKANI:
+        # 🛡️ 2. BİYOTEKNOLOJİ / FDA KUMAR KALKANI
         is_binary_biotech = False
         if "biotechnology" in industry.lower() or "pharmaceuticals" in industry.lower():
             if pe <= 0 or pe > 35.0 or roe < 20.0 or oper_margin < 10.0:
                 is_binary_biotech = True
 
-        # 🛡️ 3. RÖLATİF DÜŞEN BIÇAK FİLTRESİ:
+        # 🛡️ 3. RÖLATİF DÜŞEN BIÇAK
         rel_perf_1m = perf_1m - market_perf_median
         is_falling_knife = False
         if rel_perf_1m < -14.0:
@@ -161,7 +171,7 @@ def calculate_us_quant_scores(df, df_gecmis, state):
         score_quality = 30.0
         if roe >= 25.0 and oper_margin >= 15.0: score_quality += 45.0
         elif roe >= 15.0 and oper_margin >= 8.0: score_quality += 30.0
-        elif roe >= min_roe and oper_margin >= 5.0: score_quality += 15.0
+        elif roe >= min_roe and oper_margin >= min_oper_margin: score_quality += 15.0
 
         if 0 < pe <= 18.0: score_quality += 25.0
         elif 0 < pe <= 30.0: score_quality += 10.0
@@ -200,10 +210,10 @@ def calculate_us_quant_scores(df, df_gecmis, state):
     res_df['pct_flow'] = res_df['score_flow'].rank(pct=True) * 100.0
     res_df['pct_ign'] = res_df['score_ignition'].rank(pct=True) * 100.0
 
-    w_b = weights.get('macro_base', 0.35)
-    w_q = weights.get('growth_quality', 0.30)
-    w_f = weights.get('volume_flow', 0.20)
-    w_i = weights.get('ignition', 0.15)
+    w_b = weights["macro_base"]
+    w_q = weights["growth_quality"]
+    w_f = weights["volume_flow"]
+    w_i = weights["ignition"]
 
     raw_score = np.round(
         res_df['pct_base'] * w_b +
@@ -300,7 +310,7 @@ def log_lifecycle_signals(df_scored, state):
         print(f"⚠️ Yaşam döngüsü hatası: {e}")
 
 # =============================================================================
-# 4. TELEGRAM RAPORU (PORTFÖY ÇIKIŞ VE ZIRH BİLDİRİMLİ)
+# 4. TELEGRAM RAPORU (REJİM VE ÇIKIŞ BİLDİRİMLİ)
 # =============================================================================
 
 def send_telegram(message):
@@ -320,13 +330,14 @@ def send_telegram(message):
 def format_telegram_report(df_scored, state, exit_alerts):
     leaders = df_scored[df_scored['regime'].str.contains("US KULUÇKA LİDERİ")].head(5)
     audit = state.get("audit_summary", {})
+    regime = state.get("market_regime", "BOĞA / GENİŞLEME")
     
     msg = "🇺🇸 <b>WALL STREET MULTI-BAGGER & RUSSELL 2000</b>\n"
     msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Kapanış Raporu (USD)</i>\n"
+    msg += f"📈 <b>Piyasa Rejimi:</b> <code>{regime}</code>\n"
     msg += f"🤖 <b>AI Durumu:</b> <code>{audit.get('status', 'AKTİF')}</code>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 1. ÇIKIŞ VE KÂR AL BİLDİRİMLERİ
     if exit_alerts:
         msg += "🚨 <b>PORTFÖY KORUMA & ÇIKIŞ SİNYALLERİ</b>\n"
         for alert in exit_alerts:
@@ -345,7 +356,6 @@ def format_telegram_report(df_scored, state, exit_alerts):
         msg += "🛡️ <b>Açık Pozisyonlar:</b> Tüm US hisseleri güvenli bölgede kuluçkaya devam ediyor.\n"
         msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 2. YENİ LİDERLER
     msg += "💎 <b>GÜNÜN YENİ US KULUÇKA LİDERLERİ</b>\n"
     if leaders.empty:
         msg += "ℹ️ <i>Bugün 52 haftalık tabanda yeni uyanış yapan kârlı US Small-Cap hisse bulunamadı.</i>\n\n"
@@ -364,7 +374,7 @@ def format_telegram_report(df_scored, state, exit_alerts):
             msg += f"📊 ROE: <b>%{row.get('roe', 0):.1f}</b> | F/K: <b>{row.get('pe', 0):.1f}</b> | RVOL: <b>{row.get('rvol', 1.0):.2f}x</b>\n\n"
 
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "🛡️ <i>3'lü Otomatik Zırh: Split Dedektörü, Esas Faaliyet Kalkanı ve 90 Gün Zaman Stopu devrededir.</i>"
+    msg += "🛡️ <i>Rejim Zırhı: Boğa/Ayı Adaptif Ağırlıklar, Dinamik Zaman Stopu (60-120G) ve Split Dedektörü devrededir.</i>"
     return msg
 
 # =============================================================================
@@ -403,8 +413,9 @@ def main():
     limit_tarih = pd.Timestamp.now().normalize() - pd.Timedelta(days=60)
     df_yeni[df_yeni['tarih'] >= limit_tarih].to_csv(GECMIS_DOSYA, index=False)
 
+    save_ai_state(state)
     send_telegram(format_telegram_report(df_scored, state, exit_alerts))
-    print("US Taraması ve Çıkış Denetimi Tamamlandı!")
+    print("US Taraması Başarıyla Tamamlandı!")
 
 if __name__ == "__main__":
     main()
