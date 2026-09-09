@@ -1,7 +1,8 @@
 {
-  "version": "1.0.0",
-  "strategy": "US_RUSSELL2000_MULTI_BAGGER",
+  "version": "4.0.0",
+  "strategy": "US_RUSSELL2000_REGIME_ADAPTIVE",
   "currency": "USD",
+  "market_regime": "BOĞA / GENİŞLEME",
   "weights": {
     "macro_base": 0.35,
     "growth_quality": 0.30,
@@ -12,20 +13,21 @@
     "min_market_cap_usd": 300000000,
     "max_market_cap_usd": 6000000000,
     "min_roe": 12.0,
+    "min_oper_margin": 5.0,
     "max_dist_from_52w_low": 30.0,
     "min_dist_from_52w_low": 3.0,
     "macro_stop_loss_pct": -12.0
   },
   "learning_params": {
     "learning_rate": 0.05,
-    "min_weight": 0.10,
-    "max_weight": 0.50,
+    "min_weight": 0.08,
+    "max_weight": 0.45,
     "min_sample_size": 10
   },
   "audit_summary": {
-    "last_audit_date": "2026-09-08",
+    "last_audit_date": "2026-09-09",
     "total_signals_audited": 0,
     "win_rate_6m": 0.0,
-    "status": "🦅 US SMALL-CAP KULUÇKA MODELİ AKTİF (Hedef: %100 - %250 USD)"
+    "status": "🦅 US SMALL-CAP KULUÇKA (Rejim ve Dinamik Zaman Korumalı)"
   }
 }
