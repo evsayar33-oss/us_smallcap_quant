@@ -1,0 +1,41 @@
+name: Wall Street 2019-2026 Backtest & Threshold Optimization
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Her ayın 1'inde TSİ 04:00'te otomatik tam US backtest & optimizasyon
+    - cron: '0 1 1 * *'
+
+permissions:
+  contents: write
+
+jobs:
+  run-backtest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodu Repo'dan Çek
+        uses: actions/checkout@v4
+
+      - name: Python Kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Bağımlılıkları Yükle
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install yfinance
+
+      - name: 2019-2026 Wall Street Backtest & Optimizasyon Motorunu Çalıştır
+        run: |
+          python backtest_optimizer.py --start-date 2019-01-01 --optimize --save
+
+      - name: Güncellenen Eşikleri ve Raporu Kaydet (Git Commit)
+        run: |
+          git config --local user.email "quantbot@github.com"
+          git config --local user.name "QuantBot AI"
+          git add -A
+          git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Otonom 2019-2026 US Backtest & Eşik Optimizasyonu: $(date -u)" && git push)
