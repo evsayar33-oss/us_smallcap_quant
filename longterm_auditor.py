@@ -110,8 +110,8 @@ def update_signal_lifecycle(df_signals, market_prices, state):
 
         # 🛡️ HIZLI BAŞABAŞ (FAST BREAKEVEN) VE KADEMELİ KÂR KİLİTLEME
         trailing_stop = initial_stop
-        if peak_gain >= 6.0:
-            trailing_stop = max(trailing_stop, round(entry_p * 1.01, 2)) # Maliyet + %1
+        if peak_gain >= 5.5:
+            trailing_stop = max(trailing_stop, round(entry_p * 1.015, 2)) # Kurumsal Başabaş Maliyet + %1.5
         if peak_gain >= 14.0:
             trailing_stop = max(trailing_stop, round(entry_p * 1.07, 2)) # Kârın %7'sini kilitle
         if peak_gain >= 25.0:
