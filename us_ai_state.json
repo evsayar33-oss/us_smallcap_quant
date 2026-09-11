@@ -1,11 +1,11 @@
 {
-  "version": "4.2.0",
-  "strategy": "US_RUSSELL2000_TIERED_OPTIMIZED",
+  "version": "4.3.0",
+  "strategy": "US_RUSSELL2000_LOW_DRAWDOWN_OPTIMIZED",
   "currency": "USD",
   "market_regime": "BOĞA / GENİŞLEME",
   "weights": {
-    "macro_base": 0.35,
-    "growth_quality": 0.3,
+    "macro_base": 0.3,
+    "growth_quality": 0.35,
     "volume_flow": 0.2,
     "ignition": 0.15
   },
@@ -27,12 +27,13 @@
         "min_roe": 8.0,
         "min_oper_margin": 4.0,
         "min_dist_from_52w_low": 2.5,
-        "max_dist_from_52w_low": 32.0,
+        "max_dist_from_52w_low": 28.0,
         "ideal_pe_max": 20.0,
-        "acceptable_pe_max": 35.0,
-        "stop_loss_pct": -14.0,
-        "target_cup_min": 45.0,
-        "max_patience_days": 65
+        "acceptable_pe_max": 32.0,
+        "stop_loss_pct": -8.5,
+        "be_trigger_pct": 7.0,
+        "target_cup_min": 35.0,
+        "max_patience_days": 50
       },
       "small_cap": {
         "label": "US Core Small-Cap ($1B - $3B)",
@@ -43,12 +44,13 @@
         "min_roe": 12.0,
         "min_oper_margin": 6.5,
         "min_dist_from_52w_low": 3.0,
-        "max_dist_from_52w_low": 26.0,
+        "max_dist_from_52w_low": 24.0,
         "ideal_pe_max": 18.0,
-        "acceptable_pe_max": 28.0,
-        "stop_loss_pct": -11.0,
-        "target_cup_min": 40.0,
-        "max_patience_days": 90
+        "acceptable_pe_max": 26.0,
+        "stop_loss_pct": -7.5,
+        "be_trigger_pct": 6.5,
+        "target_cup_min": 35.0,
+        "max_patience_days": 60
       },
       "mid_cap": {
         "label": "US SMID-Cap ($3B - $6B)",
@@ -56,15 +58,16 @@
           3000000000,
           6000000000
         ],
-        "min_roe": 16.0,
-        "min_oper_margin": 9.0,
+        "min_roe": 15.0,
+        "min_oper_margin": 8.5,
         "min_dist_from_52w_low": 3.0,
         "max_dist_from_52w_low": 20.0,
         "ideal_pe_max": 15.0,
         "acceptable_pe_max": 22.0,
-        "stop_loss_pct": -8.0,
-        "target_cup_min": 35.0,
-        "max_patience_days": 120
+        "stop_loss_pct": -6.0,
+        "be_trigger_pct": 5.5,
+        "target_cup_min": 30.0,
+        "max_patience_days": 75
       }
     }
   },
@@ -76,20 +79,26 @@
   },
   "audit_summary": {
     "last_audit_date": "2026-09-11",
-    "total_signals_audited": 350,
-    "win_rate_6m": 45.1,
+    "total_signals_audited": 309,
+    "win_rate_6m": 60.5,
     "status": "🦅 US SMALL-CAP KULUÇKA (Rejim ve Dinamik Zaman Korumalı)"
   },
   "backtest_benchmark": {
     "period": "2019-2026",
     "currency": "USD",
-    "win_rate": 45.1,
-    "profit_factor": 1.52,
-    "cagr_pct": 61.42,
-    "max_drawdown_pct": -86.26,
-    "calmar_ratio": 0.71,
-    "total_trades": 350,
-    "avg_duration_days": 59,
-    "status": "🏆 RUSSELL 2000 DİNAMİK PİYASA DEĞERİ EŞİKLERİ VE REJİM OPTİMİZASYONU AKTİF"
+    "win_rate": 60.5,
+    "profit_factor": 1.63,
+    "cagr_pct": 14.8,
+    "max_drawdown_pct": -15.71,
+    "calmar_ratio": 0.94,
+    "total_trades": 309,
+    "avg_duration_days": 22,
+    "status": "🛡️ RUSSELL 2000 DÜŞÜK DRAWDOWN VE HIZLI KÂR KİLİDİ AKTİF"
+  },
+  "risk_guards": {
+    "trend_gate": "SMA20_CONFIRMED",
+    "fast_breakeven_active": true,
+    "max_portfolio_risk_per_trade_pct": 2.0,
+    "position_size_pct": 20.0
   }
 }

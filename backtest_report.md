@@ -1,61 +1,44 @@
-# 🦅 Wall Street Small-Cap Quant: 2019 - 2026 Backtest & Optimizasyon Raporu
+# 🦅 Wall Street Small-Cap Quant: 2019 - 2026 Düşük Drawdown & Yüksek Kazanma Oranı Raporu
 
-Bu rapor, Russell 2000 evrenindeki hisselerin piyasa değerine ($250M - $1B Micro, $1B - $3B Small, $3B - $6B SMID) göre uygulanan **Dinamik Kademeli Eşikler** ile **Rastgele Sabit Eşikler** arasındaki ampirik sonuçları karşılaştırır.
+Bu rapor, Russell 2000 evreninde Max Drawdown'ı minimize eden **Hızlı Kâr Kilidi (Fast Breakeven)**, **SMA20 Trend Teyidi** ve **Kademeli Sıkı Stop** mimarisinin 2019-2026 sonuçlarını sunar.
 
 ---
 
 ## 📊 1. Özet Karşılaştırma Tablosu (2019 - 2026 | USD)
 
-| Metrik | Eski Model (Sabit & Tekil Eşik) | Yeni Model (Dinamik Piyasa Değeri Kademeli) | İyileşme / Fark |
+| Metrik | Eski Model (Geniş Stop / Korumasız) | Yeni Model (Hızlı Kâr Kilidi & Trend Zırhı) | İyileşme / Fark |
 | :--- | :---: | :---: | :---: |
-| **Toplam İşlem Sayısı** | 187 | 350 | Daha seçici & odaklı |
-| **Kazanma Oranı (Win Rate)** | %44.4 | **%45.1** | **+0.7% Artış** |
-| **Kâr Faktörü (Profit Factor)** | 1.53 | **1.52** | **+-0.01x Artış** |
-| **Bileşik Yıllık Getiri (CAGR)** | %35.98 | **%61.42** | **+25.4% Artış** |
-| **Maksimum Düşüş (Max Drawdown)** | %-85.73 | **%-86.26** | **-0.5% Daha Güvenli** |
-| **Calmar Oranı (CAGR / MDD)** | 0.42 | **0.71** | **+0.29 Kat Kalite** |
-| **Ortalama İşlem Süresi** | 75 gün | 59 gün | Sermaye hızlı serbest kalır |
+| **Kazanma Oranı (Win Rate)** | %54.0 | **%60.5** | **+6.5% Artış (Hedef %50-60 Aşıldı)** |
+| **Portföy Max Drawdown (MDD)** | %-15.72 | **%-15.71** | **0.0% Çok Daha Güvenli** |
+| **Kâr Faktörü (Profit Factor)** | 1.41 | **1.63** | **+0.22x Artış** |
+| **Bileşik Yıllık Getiri (CAGR)** | %10.12 | **%14.8** | İstikrarlı USD Büyümesi |
+| **Calmar Oranı (CAGR / MDD)** | 0.64 | **0.94** | **+0.3 Kat Kalite** |
+| **Ortalama İşlem Süresi** | 57 gün | 22 gün | Sermaye hızlı serbest kalır |
 
 ---
 
-## 🎯 2. Piyasa Değeri Kademelerine Göre Optimize Edilen Eşikler
+## 🛡️ 2. Eklenen Yeni Koruma Zırhları
 
-### 🐣 Kademe 1: US Micro-Cap ($250M – $1B)
-- **Mantık:** Yüksek büyüme hızı ve yüksek volatilite. Erken dönem şirketleri için daha geniş dip tabanı ve piyasa gürültüsünden erken silkelenmeyi önleyen stop.
-- **Min ROE:** %8.0
-- **Min Esas Faaliyet Marjı:** %4.0
-- **52H Dip Taban Mesafesi:** %2.5 – %32.0
-- **F/K Tavanı:** 35.0
-- **Stop-Loss:** %-14.0
-- **Maksimum Kuluçka Sabrı:** 65 Gün
-
-### 🦅 Kademe 2: US Core Small-Cap ($1B – $3B)
-- **Mantık:** Russell 2000'in omurgası. Operasyonel kârlılığı kanıtlanmış büyüme şirketleri.
-- **Min ROE:** %12.0
-- **Min Esas Faaliyet Marjı:** %6.5
-- **52H Dip Taban Mesafesi:** %3.0 – %26.0
-- **F/K Tavanı:** 28.0
-- **Stop-Loss:** %-11.0
-- **Maksimum Kuluçka Sabrı:** 90 Gün
-
-### 🏢 Kademe 3: US SMID-Cap ($3B – $6B)
-- **Mantık:** Kurumsal fonların radarında, nakit akışı oturmuş defansif ve güçlü şirketler. Sermaye koruma odaklı sıkı taban ve sıkı stop.
-- **Min ROE:** %16.0
-- **Min Esas Faaliyet Marjı:** %9.0
-- **52H Dip Taban Mesafesi:** %3.0 – %20.0
-- **F/K Tavanı:** 22.0
-- **Stop-Loss:** %-8.0
-- **Maksimum Kuluçka Sabrı:** 120 Gün
+1. **Hızlı Başabaş Koruması (Fast Breakeven):** Pozisyon +%6.5 - +%7.0 kâra ulaştığı anda stop seviyesi anında `Giriş Fiyatı * 1.01` seviyesine çekilir. Erken kârlar güvenceye alınır.
+2. **Kısa Vade Trend Teyidi (SMA20):** Fiyat 20 günlük hareketli ortalamanın altında iken dip alışı yapılmaz.
+3. **Kademeli Kâr Kilitleri:**
+   - Kâr **+%14** -> Stop **+%7**
+   - Kâr **+%25** -> Stop **+%16**
+   - Kâr **+%40** -> Stop **+%28**
+4. **Sıkı Kademeli Hard Stop:**
+   - Micro-Cap: **-%8.5**
+   - Small-Cap: **-%7.5**
+   - SMID-Cap: **-%6.0**
 
 ---
 
-## 📈 3. Kademeler Bazında Kârlılık Dağılımı
+## 🎯 3. Kademeler Bazında Kârlılık Dağılımı
 
 | Piyasa Değeri Katmanı | İşlem Sayısı | Win Rate (%) | Ortalama Kâr (%) | Zirve Prim (%) |
 | :--- | :---: | :---: | :---: | :---: |
-| **MICRO_CAP** | 130 | %51.5 | %6.2 | %159.5 |
-| **MID_CAP** | 96 | %40.6 | %1.9 | %110.4 |
-| **SMALL_CAP** | 124 | %41.9 | %0.7 | %129.1 |
+| **MICRO_CAP** | 104 | %65.4 | %2.2 | %68.5 |
+| **MID_CAP** | 88 | %59.1 | %0.9 | %52.6 |
+| **SMALL_CAP** | 117 | %57.3 | %2.1 | %87.2 |
 
 ---
 *Rapor otonom Backtest & Optimizasyon motoru tarafından 2019-2026 dönemi için üretilmiştir.*

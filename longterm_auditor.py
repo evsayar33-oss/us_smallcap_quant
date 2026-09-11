@@ -108,18 +108,23 @@ def update_signal_lifecycle(df_signals, market_prices, state):
         if days_passed >= 180 and pd.isna(row.get("ret_180d")):
             df_signals.at[idx, "ret_180d"] = round(gain_from_entry, 2)
 
-        # İlerlemeye Göre Dinamik İzleyen Stop (Progress Ratio)
-        total_target_distance = target_p - entry_p
+        # 🛡️ HIZLI BAŞABAŞ (FAST BREAKEVEN) VE KADEMELİ KÂR KİLİTLEME
         trailing_stop = initial_stop
+        if peak_gain >= 6.0:
+            trailing_stop = max(trailing_stop, round(entry_p * 1.01, 2)) # Maliyet + %1
+        if peak_gain >= 14.0:
+            trailing_stop = max(trailing_stop, round(entry_p * 1.07, 2)) # Kârın %7'sini kilitle
+        if peak_gain >= 25.0:
+            trailing_stop = max(trailing_stop, round(entry_p * 1.18, 2))
+        if peak_gain >= 40.0:
+            trailing_stop = max(trailing_stop, round(entry_p * 1.30, 2))
 
+        total_target_distance = target_p - entry_p
         if total_target_distance > 0:
             peak_price = entry_p * (1.0 + peak_gain / 100.0)
             target_progress = (peak_price - entry_p) / total_target_distance
-
-            if target_progress >= 0.25:
-                trailing_stop = max(trailing_stop, round(entry_p * 1.02, 2))
             if target_progress >= 0.50:
-                trailing_stop = max(trailing_stop, round(entry_p + (total_target_distance * 0.30), 2))
+                trailing_stop = max(trailing_stop, round(entry_p + (total_target_distance * 0.35), 2))
             if target_progress >= 0.80:
                 trailing_stop = max(trailing_stop, round(entry_p + (total_target_distance * 0.65), 2))
 
