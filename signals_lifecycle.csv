@@ -1,3 +1,4 @@
 tarih,ticker,entry_price,stop_price,target_cup,target_bagger,last_seen_price,quant_score,regime,score_base,score_quality,score_flow,score_ignition,ret_30d,ret_90d,ret_180d,max_drawdown,peak_gain,outcome
-2026-09-17,VNT,31.82,26.16,48.2,79.55,31.82,75.4,🦅 US KULUÇKA LİDERİ (MULTI-BAGGER),100.0,100.0,10.0,36.6,,,,0.0,0.0,INCUBATING
-2026-09-17,AEO,14.91,13.49,28.46,37.27,14.91,72.0,🦅 US KULUÇKA LİDERİ (MULTI-BAGGER),100.0,85.0,10.0,15.6,,,,0.0,0.0,INCUBATING
+2026-09-18,ADMA,9.11,6.92,20.46,22.77,9.11,87.1,🦅 US KULUÇKA LİDERİ (MULTI-BAGGER),65.0,100.0,91.2,100.0,,,,0.0,0.0,INCUBATING
+2026-09-18,MWA,21.9,20.59,31.0,54.75,21.9,78.1,🦅 US KULUÇKA LİDERİ (MULTI-BAGGER),65.0,70.0,62.7,100.0,,,,0.0,0.0,INCUBATING
+2026-09-18,AEO,15.06,13.49,28.46,37.65,15.06,71.1,🦅 US KULUÇKA LİDERİ (MULTI-BAGGER),100.0,85.0,14.5,28.5,,,,0.0,0.0,INCUBATING
