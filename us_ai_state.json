@@ -81,21 +81,21 @@
     "min_sample_size": 10
   },
   "audit_summary": {
-    "last_audit_date": "2026-09-11",
-    "total_signals_audited": 179,
-    "win_rate_6m": 57.0,
+    "last_audit_date": "2026-09-22",
+    "total_signals_audited": 31,
+    "win_rate_6m": 64.5,
     "status": "🦅 US SMALL-CAP KULUÇKA (Rejim ve Dinamik Zaman Korumalı)"
   },
   "backtest_benchmark": {
     "period": "2019-2026",
     "currency": "USD",
-    "win_rate": 57.0,
-    "profit_factor": 1.06,
-    "cagr_pct": 0.44,
-    "max_drawdown_pct": -8.75,
-    "calmar_ratio": 0.05,
-    "total_trades": 179,
-    "avg_duration_days": 18,
+    "win_rate": 64.5,
+    "profit_factor": 1.02,
+    "cagr_pct": 0.02,
+    "max_drawdown_pct": -3.75,
+    "calmar_ratio": 0.01,
+    "total_trades": 31,
+    "avg_duration_days": 4,
     "status": "🏛️ RUSSELL 2000 MAKSİMUM %10 ALTI KURUMSAL DRAWDOWN AKTİF"
   },
   "risk_guards": {

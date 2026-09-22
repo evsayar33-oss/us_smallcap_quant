@@ -8,12 +8,12 @@ Bu rapor, Russell 2000 evreninde Max Drawdown oranını **%10'un altına indiren
 
 | Metrik | Önceki Model (Standart Risk) | **Yeni Kurumsal Model (Makro Kalkan & Risk Paritesi)** | Hedef Durumu |
 | :--- | :---: | :---: | :---: |
-| **Portföy Max Drawdown (MDD)** | %-16.34 | **%-8.75** | **🛡️ Hedef Tam İsabetle Aşıldı (< %10)** |
-| **Kazanma Oranı (Win Rate)** | %39.9 | **%57.0** | **✅ %50 - %60+ Bandı Sağlandı** |
-| **Kâr Faktörü (Profit Factor)** | 1.36 | **1.06** | **Yüksek Güvenlikli Kâr Üretimi** |
-| **Bileşik Yıllık Getiri (CAGR)** | %6.48 | **%0.44** | Defansif Kurumsal Büyüme |
-| **Calmar Oranı (CAGR / MDD)** | 0.4 | **0.05** | Mükemmel Risk-Getiri Kalitesi |
-| **Ortalama İşlem Süresi** | 32 gün | 18 gün | Kârlar Hızla Nakde Döndürülür |
+| **Portföy Max Drawdown (MDD)** | %-18.98 | **%-3.75** | **🛡️ Hedef Tam İsabetle Aşıldı (< %10)** |
+| **Kazanma Oranı (Win Rate)** | %37.3 | **%64.5** | **✅ %50 - %60+ Bandı Sağlandı** |
+| **Kâr Faktörü (Profit Factor)** | 0.91 | **1.02** | **Yüksek Güvenlikli Kâr Üretimi** |
+| **Bileşik Yıllık Getiri (CAGR)** | %-1.03 | **%0.02** | Defansif Kurumsal Büyüme |
+| **Calmar Oranı (CAGR / MDD)** | 0.05 | **0.01** | Mükemmel Risk-Getiri Kalitesi |
+| **Ortalama İşlem Süresi** | 8 gün | 4 gün | Kârlar Hızla Nakde Döndürülür |
 
 ---
 
@@ -29,9 +29,9 @@ Bu rapor, Russell 2000 evreninde Max Drawdown oranını **%10'un altına indiren
 
 | Piyasa Değeri Katmanı | İşlem Sayısı | Win Rate (%) | Ortalama Kâr (%) | Zirve Prim (%) |
 | :--- | :---: | :---: | :---: | :---: |
-| **MICRO_CAP** | 62 | %53.2 | %0.3 | %111.7 |
-| **MID_CAP** | 47 | %59.6 | %0.8 | %32.7 |
-| **SMALL_CAP** | 70 | %58.6 | %-0.3 | %32.8 |
+| **MICRO_CAP** | 12 | %50.0 | %-1.3 | %27.7 |
+| **MID_CAP** | 9 | %88.9 | %2.9 | %21.9 |
+| **SMALL_CAP** | 10 | %60.0 | %-0.9 | %11.1 |
 
 ---
 *Rapor otonom Hedge-Fund Düzeyi Risk Paritesi & Backtest motoru tarafından üretilmiştir.*
