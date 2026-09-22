@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from scipy.stats import spearmanr
 from state_manager import load_ai_state, save_ai_state, load_lifecycle_signals, LIFECYCLE_LOG_FILE
+from autonomy_guard import update_performance_only, guard_summary
 
 def fetch_current_us_snapshot():
     url = "https://scanner.tradingview.com/america/scan"
@@ -273,6 +274,11 @@ def audit_and_calibrate():
 
     df_updated, exit_alerts = update_signal_lifecycle(df_signals, market_prices, state)
     state = run_feedback_loop_optimization(df_updated, state)
+
+    # KUR-UNUT V1: evening audit also updates the performance-side safety state.
+    state = update_performance_only(state, df_updated)
+    state["autonomy_guard"]["last_audit_guard_summary"] = guard_summary(state)
+    save_ai_state(state)
     return state, exit_alerts
 
 if __name__ == "__main__":

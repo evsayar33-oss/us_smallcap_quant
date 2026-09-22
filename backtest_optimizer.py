@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 
+from autonomy_guard import run_stress_test
+
 US_UNIVERSE = {
     # Micro-Cap ($250M - $1B)
     "STEM": {"tier": "micro_cap", "sector": "CleanTech", "mcap_usd": 4.5e8, "base_roe": 12.0, "base_margin": 6.0},
@@ -42,63 +44,49 @@ US_UNIVERSE = {
 STATE_FILE = "us_ai_state.json"
 REPORT_FILE = "backtest_report.md"
 
-def is_online():
-    try:
-        r = requests.get("https://query1.finance.yahoo.com", timeout=1.0)
-        return r.status_code == 200
-    except Exception:
-        return False
-
 def fetch_or_generate_us_data(start_date="2019-01-01", end_date="2026-09-01"):
+    """Fetch real historical OHLCV only. Synthetic market generation is disabled."""
+    try:
+        import yfinance as yf
+
+        tickers = list(US_UNIVERSE.keys())
+        df_all = yf.download(
+            tickers,
+            start=start_date,
+            end=end_date,
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=True,
+        )
+    except Exception as exc:
+        print(f"🛑 Gerçek tarihsel veri alınamadı: {exc}")
+        return {}
+
+    if df_all is None or df_all.empty:
+        print("🛑 Gerçek tarihsel veri boş döndü; backtest durduruluyor.")
+        return {}
+
     data = {}
-    online_success = False
-
-    if is_online():
+    for ticker in tickers:
         try:
-            import yfinance as yf
-            tickers = list(US_UNIVERSE.keys())
-            df_all = yf.download(tickers, start=start_date, end=end_date, interval="1d", group_by="ticker", timeout=15)
-            if not df_all.empty and len(df_all) > 100:
-                for t in tickers:
-                    if t in df_all and not df_all[t].dropna().empty:
-                        data[t] = df_all[t].dropna()
-                if len(data) >= len(tickers) // 2:
-                    online_success = True
-        except Exception:
-            online_success = False
-
-    if not online_success:
-        print("ℹ️ Güvenli/Deterministik mod devrede: 2019-2026 Russell 2000 ve Small-Cap Simülatörü çalıştırılıyor...")
-        dates = pd.date_range(start=start_date, end=end_date, freq="B")
-        n_days = len(dates)
-        np.random.seed(101)
-        base_market_drift = 0.00045
-
-        # Russell 2000 Benchmark Endeks Serisi (Makro Rejim Kalkanı)
-        mkt_rets = np.random.normal(0.00040, 0.0125, n_days)
-        mkt_index = 100.0 * np.cumprod(1.0 + mkt_rets)
-
-        for t, meta in US_UNIVERSE.items():
-            if meta["tier"] == "micro_cap":
-                vol, beta = 0.028, 1.30
-            elif meta["tier"] == "small_cap":
-                vol, beta = 0.023, 1.15
+            if len(tickers) == 1:
+                g = df_all.copy()
+            elif ticker in df_all.columns.get_level_values(0):
+                g = df_all[ticker].copy()
             else:
-                vol, beta = 0.018, 1.00
+                continue
+            g = g.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+            if len(g) >= 250:
+                data[ticker] = g
+        except Exception:
+            continue
 
-            daily_returns = np.random.normal(base_market_drift * beta, vol, n_days)
-            price_series = 25.0 * np.cumprod(1.0 + daily_returns)
-
-            highs = price_series * (1.0 + np.abs(np.random.normal(0.014, 0.007, n_days)))
-            lows = price_series * (1.0 - np.abs(np.random.normal(0.014, 0.007, n_days)))
-            opens = lows + (highs - lows) * np.random.uniform(0.2, 0.8, n_days)
-            volumes = np.random.lognormal(13.5, 0.5, n_days)
-
-            df_ticker = pd.DataFrame({
-                "Open": opens, "High": highs, "Low": lows, "Close": price_series, "Volume": volumes,
-                "Market_Benchmark": mkt_index
-            }, index=dates)
-            data[t] = df_ticker
+    min_required = max(5, len(tickers) // 2)
+    if len(data) < min_required:
+        print(f"🛑 Gerçek veri kapsamı yetersiz: {len(data)}/{min_required} hisse.")
+        return {}
 
     return data
 
@@ -450,12 +438,23 @@ def main():
     args = parser.parse_args()
 
     data = fetch_or_generate_us_data(args.start_date, args.end_date)
+    if not data:
+        raise SystemExit("BACKTEST ABORTED: Gerçek veri yok; sentetik fallback kapalı.")
+
+    stress = run_stress_test()
+    if not stress.get("passed", False):
+        raise SystemExit("BACKTEST ABORTED: Kur-Unut V1 stress-test başarısız.")
+
     tier_configs, metrics_prev, metrics_inst, df_inst = run_institutional_optimization(data)
 
     if args.save:
         save_optimized_state(tier_configs, metrics_inst)
 
     generate_report(metrics_prev, metrics_inst, tier_configs, df_inst)
+    print(
+        f"\n🛡️ Kur-Unut Stress-Test: "
+        f"{stress.get('passed_cases', 0)}/{stress.get('total_cases', 0)} PASS"
+    )
     print("\n🏁 US Kurumsal Düşük Drawdown (<%10) Optimizasyonu Başarıyla Tamamlandı!")
 
 if __name__ == "__main__":

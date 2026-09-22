@@ -37,6 +37,20 @@ def load_ai_state():
     return {}
 
 @st.cache_data(ttl=60)
+def load_backtest_win_rate():
+    """Backtest Win Rate'i mevcut AI state icindeki benchmark alanindan okur."""
+    if os.path.exists("us_ai_state.json"):
+        try:
+            with open("us_ai_state.json", "r", encoding="utf-8") as f:
+                state = json.load(f)
+            value = state.get("backtest_benchmark", {}).get("win_rate")
+            if value is not None:
+                return float(value)
+        except Exception:
+            pass
+    return None
+
+@st.cache_data(ttl=60)
 def load_lifecycle_signals():
     if os.path.exists("signals_lifecycle.csv"):
         try:
@@ -50,6 +64,7 @@ def load_lifecycle_signals():
 df_gecmis = load_historical_data()
 ai_state = load_ai_state()
 df_lifecycle = load_lifecycle_signals()
+backtest_win_rate = load_backtest_win_rate()
 
 # =============================================================================
 # ÜST BİLGİ VE METRİK KARTLARI
@@ -58,7 +73,7 @@ df_lifecycle = load_lifecycle_signals()
 st.title("🦅 Wall Street Multi-Bagger & Russell 2000 Terminal")
 st.markdown("*ABD piyasalarında (NYSE & NASDAQ) 52 haftalık dipte kuluçkaya yatmış; **kârlı ve %100 - %250 USD potansiyeli taşıyan Small-Cap** hisseleri bulan Quant Motoru.*")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 weights = ai_state.get("weights", {"macro_base": 0.35, "growth_quality": 0.30, "volume_flow": 0.20, "ignition": 0.15})
 audit = ai_state.get("audit_summary", {})
 
@@ -67,8 +82,11 @@ with col1:
 with col2:
     st.metric("🏆 6 Aylık Win Rate", f"%{audit.get('win_rate_6m', 0.0):.1f}", f"Denetlenen: {audit.get('total_signals_audited', 0)}")
 with col3:
-    st.metric("🎯 Getiri Hedefi", "%100 - %250 USD", "Saf Dolar Bazlı")
+    bt_label = f"%{backtest_win_rate:.1f}" if backtest_win_rate is not None else "Veri yok"
+    st.metric("📊 Backtest Win Rate", bt_label, "OOS / Kurumsal Backtest")
 with col4:
+    st.metric("🎯 Getiri Hedefi", "%100 - %250 USD", "Saf Dolar Bazlı")
+with col5:
     last_date = audit.get("last_audit_date", "-")
     st.metric("🗓️ Son Model Güncellemesi", str(last_date))
 

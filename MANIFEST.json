@@ -1,0 +1,50 @@
+{
+  "base_source": "user_uploaded:/mnt/data/us_smallcap_quant-main.zip",
+  "project": "us_smallcap_quant",
+  "feature": "Kur-Unut V1 — Regime Stress-Test / Drift / Safe-Mode / Recovery",
+  "ui_change": "Only Backtest Win Rate metric added to existing Streamlit top metric row.",
+  "mutable_runtime_files_preserved": [
+    "us_ai_state.json",
+    "gecmis_veri.csv",
+    "signals_lifecycle.csv",
+    "backtest_report.md"
+  ],
+  "install_files": [
+    ".gitignore",
+    "app.py",
+    "autonomy_guard.py",
+    "backtest_optimizer.py",
+    "bootstrap_us_history.py",
+    "longterm_auditor.py",
+    "main.py",
+    "requirements.txt",
+    "state_manager.py",
+    ".github/workflows/daily_scan.yml",
+    ".github/workflows/backtest_optimization.yml"
+  ],
+  "tests": {
+    "py_compile": {
+      "main.py": true,
+      "longterm_auditor.py": true,
+      "backtest_optimizer.py": true,
+      "app.py": true,
+      "autonomy_guard.py": true,
+      "state_manager.py": true,
+      "bootstrap_us_history.py": true
+    },
+    "guard_stress_test": {
+      "passed": true,
+      "passed_cases": 7,
+      "total_cases": 7
+    },
+    "main_import": true
+  },
+  "behavior": {
+    "NORMAL": "Existing scoring path is preserved.",
+    "WATCH": "New entries require +10 score threshold and exposure multiplier 0.60.",
+    "SAFE": "New entries are blocked; existing scores are retained for observation/learning.",
+    "RECOVERY": "Exposure 0.40 and +7 threshold until clean observations return to NORMAL.",
+    "panic": "High-confidence PANIC fails closed.",
+    "backtest": "Real-data-only; synthetic fallback disabled."
+  }
+}

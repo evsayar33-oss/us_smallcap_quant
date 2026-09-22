@@ -7,6 +7,7 @@ import warnings
 
 from state_manager import load_ai_state, load_lifecycle_signals, LIFECYCLE_LOG_FILE
 from longterm_auditor import audit_and_calibrate
+from autonomy_guard import decide_guard, apply_to_scores, guard_summary
 
 warnings.filterwarnings('ignore')
 
@@ -320,9 +321,23 @@ def calculate_us_quant_scores(df, df_gecmis, state):
 # 4. YAŞAM DÖNGÜSÜ GÜNLÜĞÜ
 # =============================================================================
 
-def log_lifecycle_signals(df_scored, state):
+def log_lifecycle_signals(df_scored, state, guard_decision=None):
     try:
-        leaders = df_scored[df_scored['regime'].str.contains("US KULUÇKA LİDERİ")].head(6)
+        guard_decision = guard_decision or {
+            "state": "NORMAL",
+            "entry_allowed": True,
+            "exposure_multiplier": 1.0,
+            "threshold_add": 0.0,
+        }
+        if not bool(guard_decision.get("entry_allowed", True)):
+            print("🛡️ KUR-UNUT SAFE MODE: yeni girişler lifecycle defterine alınmıyor.")
+            return
+
+        leaders = df_scored[df_scored['regime'].str.contains("US KULUÇKA LİDERİ")].copy()
+        base_threshold = 65.0 + float(guard_decision.get("threshold_add", 0.0))
+        if "quant_score" in leaders.columns:
+            leaders = leaders[leaders["quant_score"] >= base_threshold]
+        leaders = leaders.head(6)
         if leaders.empty:
             return
 
@@ -404,7 +419,16 @@ def format_telegram_report(df_scored, state, exit_alerts):
             msg += f"• <b>#{alert['ticker']}</b>: {alert['msg']}\n"
         msg += "\n"
 
-    leaders = df_scored[df_scored['regime'].str.contains("US KULUÇKA LİDERİ")].head(5)
+    guard_state = str(state.get("autonomy_guard", {}).get("state", "NORMAL")).upper()
+    if guard_state == "SAFE":
+        msg += (
+            "🛡️ <b>KUR-UNUT SAFE MODE:</b> "
+            "Yeni girişler otomatik olarak bloke edildi; mevcut skorlar yalnızca gözlem/öğrenme amacıyla tutuluyor.\n\n"
+        )
+        leaders = df_scored.iloc[0:0]
+    else:
+        leaders = df_scored[df_scored['regime'].str.contains("US KULUÇKA LİDERİ")].head(5)
+
     if not leaders.empty:
         msg += "💎 <b>GÜNÜN US KULUÇKA LİDERLERİ (Multi-Bagger Adayları)</b>\n"
         msg += "<i>(Piyasa Değeri Kademesi, Taban & Esas Faaliyet Kâr Teyitli)</i>\n\n"
@@ -456,8 +480,19 @@ def main():
     # 3. Kademeli US Quant Puanlarını Hesapla
     df_scored = calculate_us_quant_scores(df_current, df_gecmis, state)
 
+    # 3A. KUR-UNUT V1: Regime Stress-Test + Drift + Safe-Mode + Recovery
+    state, guard_decision = decide_guard(
+        state=state,
+        current_df=df_current,
+        history_df=df_gecmis,
+        lifecycle_df=load_lifecycle_signals(),
+        run_test=True,
+    )
+    df_scored = apply_to_scores(df_scored, guard_decision)
+    state["autonomy_guard"]["status_summary"] = guard_summary(state)
+
     # 4. Sinyalleri Kaydet
-    log_lifecycle_signals(df_scored, state)
+    log_lifecycle_signals(df_scored, state, guard_decision)
 
     # 5. Geçmiş Veriyi Güncelle
     if not df_gecmis.empty:
@@ -465,6 +500,10 @@ def main():
     else:
         df_yeni = df_scored
     df_yeni.to_csv(GECMIS_DOSYA, index=False)
+
+    # Guard state is part of the persistent AI state; never replace the learned weights/state.
+    from state_manager import save_ai_state
+    save_ai_state(state)
 
     # 6. Telegram Raporu Gönder
     report = format_telegram_report(df_scored, state, exit_alerts)
