@@ -334,7 +334,8 @@ def log_lifecycle_signals(df_scored, state, guard_decision=None):
             return
 
         leaders = df_scored[df_scored['regime'].str.contains("US KULUÇKA LİDERİ")].copy()
-        base_threshold = 65.0 + float(guard_decision.get("threshold_add", 0.0))
+        wr_threshold = float(state.get("win_rate_optimizer", {}).get("active_threshold", 65.0))
+        base_threshold = max(65.0, wr_threshold) + float(guard_decision.get("threshold_add", 0.0))
         if "quant_score" in leaders.columns:
             leaders = leaders[leaders["quant_score"] >= base_threshold]
         leaders = leaders.head(6)

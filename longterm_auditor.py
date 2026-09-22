@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from scipy.stats import spearmanr
 from state_manager import load_ai_state, save_ai_state, load_lifecycle_signals, LIFECYCLE_LOG_FILE
+from win_rate_optimizer import optimize_win_rate, summary as winrate_optimizer_summary
 from autonomy_guard import update_performance_only, guard_summary
 
 def fetch_current_us_snapshot():
@@ -274,6 +275,11 @@ def audit_and_calibrate():
 
     df_updated, exit_alerts = update_signal_lifecycle(df_signals, market_prices, state)
     state = run_feedback_loop_optimization(df_updated, state)
+    state = optimize_win_rate(
+        state, df_updated,
+        current_threshold=float(state.get("win_rate_optimizer", {}).get("active_threshold", 65.0)),
+    )
+    state.setdefault("audit_summary", {})["winrate_optimizer_status"] = winrate_optimizer_summary(state)
 
     # KUR-UNUT V1: evening audit also updates the performance-side safety state.
     state = update_performance_only(state, df_updated)

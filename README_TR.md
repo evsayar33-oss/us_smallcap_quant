@@ -1,164 +1,94 @@
-# US SMALL-CAP QUANT — KUR-UNUT V1 MANUEL KURULUM
+# KUR-UNUT V1 — PROJECT-SPECIFIC WIN-RATE OPTIMIZATION
 
-Bu paket, konuşmada yüklenen `us_smallcap_quant-main.zip` sürümü temel alınarak hazırlanmıştır.
+Bu paket dört projenin her birine **kendi operasyonel hedef ufkunda** win-rate odaklı, walk-forward doğrulamalı bir optimizer ekler.
 
-## ÖNEMLİ
+## Temel ilke
 
-Canlı sistemin öğrenilmiş verilerini ezmemek için aşağıdaki dosyalar kurulum payload'ına dahil edilmedi:
+Amaç `win rate = %100` gibi bir hedefi körlemesine kovalamak değildir. Her proje:
 
-- `us_ai_state.json`
-- `gecmis_veri.csv`
-- `signals_lifecycle.csv`
-- `backtest_report.md`
+1. Geçmiş sonuçları toplar.
+2. Mevcut score threshold çevresinde dar ve kontrollü adaylar dener.
+3. Kronolojik walk-forward OOS testleri yapar.
+4. **Primary objective = OOS win rate** kullanır.
+5. Küçük örneklemi Wilson lower bound ile cezalandırır.
+6. Gerçek getiri mevcutsa PF ve ortalama getiri bozulma korumaları uygular.
+7. Yalnızca doğrulanmış iyileşmeyi `active_threshold` olarak promote eder.
+8. Yeterli kanıt yoksa mevcut threshold'u değiştirmez.
 
-Bu dört dosyanın orijinal yüklenen ZIP içindeki hali `02_REFERENCE_ONLY__DO_NOT_OVERWRITE_LIVE_DATA/` klasöründedir. Bunları canlı repo üzerine kopyalamayın.
+Dolayısıyla sistemler kendi başlarına performanslarını iyileştirmeye çalışır; ancak aynı anda overfit riskini sınırlamaya devam eder.
 
-## KURULUM
+## Proje hedefleri
 
-GitHub repo klasörünüzün içine `01_INSTALL_PAYLOAD/` altındaki dosyaları aynı yollarını koruyarak kopyalayın.
+- `bist_orderflow_quant`: T+3 win-rate
+- `bist_shock_quant`: T+5 win-rate
+- `sp500_shock_quant`: T+5 win-rate
+- `us_smallcap_quant`: mature lifecycle WIN-rate (projenin mevcut 6 aylık operational metric'i)
 
-Değiştirilen mevcut dosyalar:
+## Kurulum
 
-1. `main.py`
-2. `longterm_auditor.py`
-3. `backtest_optimizer.py`
-4. `app.py`
+Her klasördeki dosyaları aynı repo köküne kopyalayın.
 
-Eklenen yeni dosya:
+### BIST Orderflow
 
-5. `autonomy_guard.py`
+Yeni:
+- `win_rate_optimizer.py`
 
-Ayrıca mevcut workflow dosyaları payload içinde güncel halleriyle bulunmaktadır:
+Değişen:
+- `longterm_auditor.py`
+- `main.py`
 
-- `.github/workflows/daily_scan.yml`
-- `.github/workflows/backtest_optimization.yml`
+### BIST Shock
 
-`bootstrap_us_history.py`, `state_manager.py`, `.gitignore` ve `requirements.txt` da yüklenen proje sürümündeki halleriyle payload'a eklenmiştir; değişiklik yapılmamıştır.
+Yeni:
+- `win_rate_optimizer.py`
 
-## KUR-UNUT V1 NE YAPIYOR?
+Değişen:
+- `shock_auditor.py`
+- `main.py`
 
-Akış:
+### S&P 500 Shock
 
-DATA → REGIME → EXISTING QUANT SCORE → AUTONOMY GUARD → ENTRY CONTROL
+Yeni:
+- `win_rate_optimizer.py`
 
-Guard şu durum makinesini kullanır:
+Değişen:
+- `sp_auditor.py`
+- `main.py`
 
-NORMAL → WATCH → SAFE → RECOVERY → NORMAL
+### US Small-Cap
 
-### NORMAL
+Yeni:
+- `win_rate_optimizer.py`
 
-Mevcut Quant skorlaması ve normal giriş mantığı korunur.
+Değişen:
+- `longterm_auditor.py`
+- `main.py`
 
-### WATCH
+Mevcut `app.py`, UI veya tarihsel CSV/JSON dosyalarına bu paket içinde dokunulmaz.
 
-Feature drift, performans drift'i veya piyasa stresi izleniyorsa yeni giriş standardı sıkılaşır:
+## Çalışma mantığı
 
-- +10 puan ilave eşik
-- 0.60x maruziyet katsayısı
+Optimizer her audit döngüsünde çalışır. Eğer OOS sonuçları mevcut threshold'a göre anlamlı biçimde daha yüksek win-rate göstermezse hiçbir şey değiştirmez.
 
-### SAFE
+Promosyon için temel korumalar:
 
-Ciddi drift/veri/piyasa stresi oluşursa yeni girişler engellenir:
+- minimum örneklem
+- +2.0 yüzde puanı ham OOS win-rate artışı
+- +1.5 yüzde puanı Wilson lower-bound artışı
+- varsa PF'nin %10'dan fazla bozulmaması
+- varsa ortalama getirinin 0.25 yüzde puanından fazla bozulmaması
 
-- yeni lifecycle sinyali oluşturulmaz
-- mevcut skorlar silinmez
-- mevcut öğrenme geçmişi silinmez
+## Test
 
-### RECOVERY
-
-SAFE sonrası doğrudan tam kapasiteye dönülmez:
-
-- 0.40x maruziyet
-- +7 puan ilave eşik
-- temiz gözlemler devam ederse NORMAL'e dönüş
-
-## DRIFT
-
-Feature dağılım drift'i PSI ile izlenir. Referans olarak yakın dönem gerçek geçmiş veri kullanılır.
-
-İzlenen temel aileler:
-
-- RVOL
-- haftalık / aylık / yıllık performans
-- mevcut Quant skor faktörleri
-- Quant skor
-
-Performans drift'i de ayrı izlenir.
-
-## REGIME STRESS-TEST
-
-`autonomy_guard.py` içindeki stress-test yalnızca motorun davranışını test eder. Sentetik senaryolar gerçek piyasa verisi yerine geçmez ve production backtest'e yazılmaz.
-
-Test senaryoları:
-
-- NORMAL
-- EXPANSION
-- ROTATION
-- PANIC
-- QUIET
-- RECOVERY
-- STRESS
-
-## BACKTEST
-
-Önceki sentetik fallback kaldırıldı.
-
-Gerçek Yahoo/yfinance geçmiş verisi alınamazsa:
-
-`BACKTEST ABORTED`
-
-çalışır.
-
-Bu durumda sistem sentetik fiyat üretip başarı raporu yazmaz.
-
-## SİTE / STREAMLIT
-
-Mevcut site görünümü korunmuştur.
-
-Tek UI değişikliği:
-
-`📊 Backtest Win Rate`
-
-metriğinin üst kartlara eklenmesidir.
-
-Değer mevcut `us_ai_state.json` içindeki:
-
-`backtest_benchmark.win_rate`
-
-alanından okunur.
-
-Veri yoksa `Veri yok` gösterilir.
-
-Başka sekme, tablo, başlık veya görünüm değişikliği yapılmamıştır.
-
-## KURULUMDAN SONRA TEST
-
-Repo kökünde:
+Repo kökünde ilgili proje için:
 
 ```bash
-python -m py_compile main.py longterm_auditor.py backtest_optimizer.py app.py autonomy_guard.py
+python -m py_compile win_rate_optimizer.py main.py <audit_file>.py
+python -c "from win_rate_optimizer import wilson_lower_bound; print(wilson_lower_bound(45, 60))"
 ```
 
-Sonra:
+Bu optimizer mevcut sistemi değiştirmeden önce yalnızca `state["win_rate_optimizer"]` içine aday/karar bilgisi yazar.
 
-```bash
-python autonomy_guard.py
-```
+## Önemli
 
-Beklenen:
-
-```text
-passed = True
-passed_cases = 7
-total_cases = 7
-```
-
-Canlı scan'i ayrıca çalıştırmak için:
-
-```bash
-python main.py
-```
-
-## NOT
-
-Bu katman kârlılık garantisi değildir. Amacı sistemin piyasa/rejim/veri/model varsayımları bozulduğunda bunu algılayıp risk azaltması, yeni girişleri güvenli biçimde durdurması ve doğrulanmış koşullarda kontrollü şekilde geri açılmasıdır.
+Bu katman gelecekteki win-rate'i garanti etmez. Görevi, mevcut proje için **doğrulanmış** win-rate iyileştirmelerini otomatik olarak bulmak ve güvenli koşullarda uygulamaktır.
