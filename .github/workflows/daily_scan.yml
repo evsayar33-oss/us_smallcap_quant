@@ -3,7 +3,7 @@ name: US Russell 2000 Daily Scan & Audit
 on:
   schedule:
     # Hafta içi her gece TSİ 23:15 (UTC 20:15)
-    - cron: '15 20 * * 1-5'
+    - cron: '15 16 * * 1-5'
   workflow_dispatch:
 
 permissions:
