@@ -2,7 +2,7 @@
   "version": "4.4.0",
   "strategy": "US_RUSSELL2000_INSTITUTIONAL_LOW_DRAWDOWN",
   "currency": "USD",
-  "market_regime": "BOĞA / GENİŞLEME",
+  "market_regime": "AYI / DURGUNLUK",
   "weights": {
     "macro_base": 0.35,
     "growth_quality": 0.3,
@@ -107,5 +107,123 @@
     "max_portfolio_risk_per_trade_pct": 1.0,
     "volatility_parity_slot_pct": 12.5,
     "max_concurrent_slots": 8
+  },
+  "autonomy_guard": {
+    "state": "WATCH",
+    "recovery_days": 0,
+    "watch_days": 0,
+    "safe_days": 0,
+    "clean_days": 0,
+    "last_update": "2026-09-22T19:45:14+00:00",
+    "last_reason": "FEATURE_DRIFT_SEVERE",
+    "exposure_multiplier": 0.6,
+    "threshold_add": 10.0,
+    "regime": "RECOVERY",
+    "regime_confidence": 0.7,
+    "drift": {
+      "psi_max": 1.9245,
+      "psi_mean": 0.5277,
+      "features": {
+        "rvol": 1.9245,
+        "perf_w": 0.1357,
+        "perf_1m": 0.0424,
+        "perf_y": 0.0081
+      },
+      "status": "OK"
+    },
+    "performance": {
+      "recent": {},
+      "baseline": {},
+      "status": "NO_DATA",
+      "severity": 0
+    },
+    "data_health": {
+      "ok": true,
+      "severity": 0,
+      "rows": 500,
+      "bad_rows": 0,
+      "bad_rate": 0.0
+    },
+    "stress_test": {
+      "passed": true,
+      "passed_cases": 7,
+      "total_cases": 7,
+      "results": {
+        "NORMAL": {
+          "ok": true,
+          "expected": [
+            "BULL_SELECTIVE",
+            "NORMAL"
+          ],
+          "detected": "NORMAL",
+          "confidence": 0.55,
+          "rows": 120
+        },
+        "EXPANSION": {
+          "ok": true,
+          "expected": [
+            "EXPANSION"
+          ],
+          "detected": "EXPANSION",
+          "confidence": 0.789,
+          "rows": 120
+        },
+        "ROTATION": {
+          "ok": true,
+          "expected": [
+            "ROTATION"
+          ],
+          "detected": "ROTATION",
+          "confidence": 0.68,
+          "rows": 120
+        },
+        "PANIC": {
+          "ok": true,
+          "expected": [
+            "PANIC"
+          ],
+          "detected": "PANIC",
+          "confidence": 0.888,
+          "rows": 120
+        },
+        "QUIET": {
+          "ok": true,
+          "expected": [
+            "QUIET"
+          ],
+          "detected": "QUIET",
+          "confidence": 0.72,
+          "rows": 120
+        },
+        "RECOVERY": {
+          "ok": true,
+          "expected": [
+            "RECOVERY"
+          ],
+          "detected": "RECOVERY",
+          "confidence": 0.7,
+          "rows": 120
+        },
+        "STRESS": {
+          "ok": true,
+          "expected": [
+            "STRESS"
+          ],
+          "detected": "STRESS",
+          "confidence": 0.72,
+          "rows": 120
+        }
+      }
+    },
+    "version": "1.0.0",
+    "regime_stats": {
+      "breadth_up": 0.582,
+      "breadth_down": 0.416,
+      "median_daily": 0.431,
+      "median_monthly": -4.313,
+      "dispersion": 4.41,
+      "high_rvol_share": 0.082
+    },
+    "status_summary": "WATCH | Rejim=RECOVERY Güven=70% | PSI=1.925 | PF(recent)=0.00"
   }
 }
