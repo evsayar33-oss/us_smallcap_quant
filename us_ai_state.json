@@ -114,20 +114,20 @@
     "watch_days": 0,
     "safe_days": 0,
     "clean_days": 0,
-    "last_update": "2026-09-23T19:41:34+00:00",
+    "last_update": "2026-09-24T19:59:47+00:00",
     "last_reason": "FEATURE_DRIFT_SEVERE,REGIME_WATCH",
     "exposure_multiplier": 0.6,
     "threshold_add": 10.0,
-    "regime": "BROAD_SELL_OFF",
-    "regime_confidence": 0.721,
+    "regime": "STRESS",
+    "regime_confidence": 0.72,
     "drift": {
-      "psi_max": 1.5837,
-      "psi_mean": 0.4147,
+      "psi_max": 0.7911,
+      "psi_mean": 0.224,
       "features": {
-        "rvol": 1.5837,
-        "perf_w": 0.0371,
-        "perf_1m": 0.0257,
-        "perf_y": 0.0124
+        "rvol": 0.7911,
+        "perf_w": 0.051,
+        "perf_1m": 0.037,
+        "perf_y": 0.017
       },
       "status": "OK"
     },
@@ -217,13 +217,13 @@
     },
     "version": "1.0.0",
     "regime_stats": {
-      "breadth_up": 0.262,
-      "breadth_down": 0.736,
-      "median_daily": -1.544,
-      "median_monthly": -6.211,
-      "dispersion": 3.465,
-      "high_rvol_share": 0.06
+      "breadth_up": 0.43,
+      "breadth_down": 0.566,
+      "median_daily": -0.373,
+      "median_monthly": -7.114,
+      "dispersion": 3.709,
+      "high_rvol_share": 0.078
     },
-    "status_summary": "WATCH | Rejim=BROAD_SELL_OFF Güven=72% | PSI=1.584 | PF(recent)=0.00"
+    "status_summary": "WATCH | Rejim=STRESS Güven=72% | PSI=0.791 | PF(recent)=0.00"
   }
 }
