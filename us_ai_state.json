@@ -114,20 +114,20 @@
     "watch_days": 0,
     "safe_days": 0,
     "clean_days": 0,
-    "last_update": "2026-09-24T19:59:47+00:00",
+    "last_update": "2026-09-25T20:02:07+00:00",
     "last_reason": "FEATURE_DRIFT_SEVERE,REGIME_WATCH",
     "exposure_multiplier": 0.6,
     "threshold_add": 10.0,
     "regime": "STRESS",
     "regime_confidence": 0.72,
     "drift": {
-      "psi_max": 0.7911,
-      "psi_mean": 0.224,
+      "psi_max": 1.309,
+      "psi_mean": 0.3365,
       "features": {
-        "rvol": 0.7911,
-        "perf_w": 0.051,
-        "perf_1m": 0.037,
-        "perf_y": 0.017
+        "rvol": 1.309,
+        "perf_w": 0.0106,
+        "perf_1m": 0.0114,
+        "perf_y": 0.0151
       },
       "status": "OK"
     },
@@ -217,13 +217,13 @@
     },
     "version": "1.0.0",
     "regime_stats": {
-      "breadth_up": 0.43,
-      "breadth_down": 0.566,
-      "median_daily": -0.373,
-      "median_monthly": -7.114,
-      "dispersion": 3.709,
-      "high_rvol_share": 0.078
+      "breadth_up": 0.556,
+      "breadth_down": 0.438,
+      "median_daily": 0.237,
+      "median_monthly": -6.107,
+      "dispersion": 3.13,
+      "high_rvol_share": 0.03
     },
-    "status_summary": "WATCH | Rejim=STRESS Güven=72% | PSI=0.791 | PF(recent)=0.00"
+    "status_summary": "WATCH | Rejim=STRESS Güven=72% | PSI=1.309 | PF(recent)=0.00"
   }
 }
