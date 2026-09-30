@@ -1,0 +1,31 @@
+name: US Small-Cap Engine - Weekly Audit & Self-Test
+
+on:
+  schedule:
+    - cron: '15 7 * * 6'   # Cumartesi 10:15 TR
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy scipy requests yfinance
+      - name: Self-test (synthetic data, temp folder only)
+        run: python main.py --self-test
+      - name: Audit report
+        if: always()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python longterm_auditor.py
