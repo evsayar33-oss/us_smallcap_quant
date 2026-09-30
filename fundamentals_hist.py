@@ -55,10 +55,33 @@ def sec_key(ticker: str) -> str:
     return str(ticker).upper().replace(".", "-")
 
 
+LAST_DIAG: Dict = {}
+
+
 def load_cik_map() -> Dict[str, int]:
-    r = requests.get(TICKERS_URL, headers=_headers(), timeout=30)
-    r.raise_for_status()
-    return {str(v["ticker"]).upper(): int(v["cik_str"]) for v in r.json().values()}
+    errs = []
+    for attempt in range(3):
+        try:
+            r = requests.get(TICKERS_URL, headers=_headers(), timeout=30)
+            LAST_DIAG["cik_map_http"] = r.status_code
+            r.raise_for_status()
+            return {str(v["ticker"]).upper(): int(v["cik_str"]) for v in r.json().values()}
+        except Exception as exc:
+            errs.append(str(exc)[:100])
+            time.sleep(5 * (attempt + 1))
+    try:                                                   # fallback list (same SEC host, text format)
+        r = requests.get("https://www.sec.gov/include/ticker.txt", headers=_headers(), timeout=30)
+        r.raise_for_status()
+        out = {}
+        for line in r.text.splitlines():
+            parts = line.strip().split()
+            if len(parts) == 2 and parts[1].isdigit():
+                out[parts[0].upper()] = int(parts[1])
+        if out:
+            return out
+    except Exception as exc:
+        errs.append(str(exc)[:100])
+    raise RuntimeError("; ".join(errs))
 
 
 # ------------------------------------------------------------------ parsing one companyfacts JSON
@@ -193,9 +216,11 @@ def parse_companyfacts(ticker: str, facts: Dict) -> pd.DataFrame:
 
 def fetch_company(ticker: str, cik: int, session: Optional[requests.Session] = None) -> pd.DataFrame:
     s = session or requests
+    codes = LAST_DIAG.setdefault("http", {})
     for attempt in range(3):
         try:
             r = s.get(FACTS_URL.format(cik=cik), headers=_headers(), timeout=30)
+            codes[str(r.status_code)] = codes.get(str(r.status_code), 0) + 1
             if r.status_code == 404:
                 return pd.DataFrame()
             if r.status_code in (403, 429):
@@ -203,7 +228,8 @@ def fetch_company(ticker: str, cik: int, session: Optional[requests.Session] = N
                 continue
             r.raise_for_status()
             return parse_companyfacts(ticker, r.json())
-        except Exception:
+        except Exception as exc:
+            LAST_DIAG["last_error"] = f"{ticker}: {str(exc)[:120]}"
             time.sleep(2 * (attempt + 1))
     return pd.DataFrame()
 
@@ -227,10 +253,14 @@ def load_history(tickers: List[str], start_year: int, refresh_years: int = 2, ma
             cache = pd.read_csv(C.FUNDAMENTALS_CACHE_FILE)
         except Exception:
             cache = pd.DataFrame()
+    LAST_DIAG.clear()
+    LAST_DIAG["user_agent_set"] = bool((os.environ.get("SEC_USER_AGENT") or "").strip())
     try:
         cik = load_cik_map()
     except Exception as exc:
-        print(f"⚠️ SEC ticker listesi alınamadı ({exc}); bilanço önbelleği kullanılıyor.")
+        LAST_DIAG["error"] = f"cik_map: {str(exc)[:200]}"
+        print(f"::error::SEC EDGAR'a erişilemedi ({exc}). Bilanço önbelleği kullanılıyor. "
+              "GitHub Secrets'a SEC_USER_AGENT = 'Ad Soyad eposta@adres.com' ekleyin.")
         return build_point_in_time(cache)
     sess = requests.Session()
     got, ok = [], 0
@@ -256,7 +286,10 @@ def load_history(tickers: List[str], start_year: int, refresh_years: int = 2, ma
         fresh.to_csv(C.FUNDAMENTALS_CACHE_FILE, index=False, float_format="%.6g")
     except Exception:
         pass
-    print(f"📚 SEC EDGAR bilanço: {ok}/{len(tickers)} şirket")
+    LAST_DIAG.update({"companies_ok": ok, "companies_asked": len(tickers), "matched_cik": sum(1 for t in tickers if sec_key(t) in cik)})
+    print(f"📚 SEC EDGAR bilanço: {ok}/{len(tickers)} şirket · HTTP {LAST_DIAG.get('http')}")
+    if ok == 0:
+        print("::error::SEC EDGAR'dan hiç bilanço alınamadı — SEC_USER_AGENT secret'ını kontrol edin.")
     return build_point_in_time(fresh)
 
 

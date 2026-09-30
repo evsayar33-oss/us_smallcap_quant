@@ -127,7 +127,7 @@ def evaluate(state: Dict, snaps: pd.DataFrame, nav_df: Optional[pd.DataFrame], r
     inf = state.get("inflation") or {}
     ist = inf.get("status")
     st = GREEN if ist == "OK" else (YELLOW if ist in ("STALE", "PROXY") else RED)
-    checks.append(_chk("cpi", "Veri: TÜFE", st, {"OK": f"resmî TÜFE ({inf.get('source')}, son ay {inf.get('last_month')})",
+    checks.append(_chk("cpi", "Veri: enflasyon", st, {"OK": f"resmî TÜFE ({inf.get('source')}, son ay {inf.get('last_month')})",
                                                   "STALE": "TÜFE 4 aydan eski", "PROXY": "TÜFE yerine dolar vekili"}.get(
         ist, "TÜFE alınamadı (yalnız hedef kartını etkiler)"), ist))
 
@@ -141,9 +141,11 @@ def evaluate(state: Dict, snaps: pd.DataFrame, nav_df: Optional[pd.DataFrame], r
     lr = state.get("last_run") or {}
     last_eod = state.get("last_eod_date") or (lr.get("date") if lr.get("mode") == "EOD" else None)
     gap = _bdays(last_eod, today) if last_eod else 999
-    st = GREEN if gap <= 2 else (YELLOW if gap <= 5 else RED)
+    started = (state.get("portfolio") or {}).get("start_date")
+    young = started is not None and _bdays(started, today) <= 5
+    st = GREEN if gap <= 2 else (YELLOW if gap <= 5 or (not last_eod and young) else RED)
     checks.append(_chk("run", "Günlük çalışma", st,
-                       "hiç kapanış sonrası çalışma yok" if not last_eod else f"son kapanış işlemi {last_eod} ({gap} iş günü önce)", gap))
+                       "ilk kapanış sonrası çalışma bekleniyor (planlı saatte otomatik)" if not last_eod else f"son kapanış işlemi {last_eod} ({gap} iş günü önce)", gap))
 
     pf = state.get("portfolio") or {}
     month = today.strftime("%Y-%m")
@@ -186,6 +188,14 @@ def evaluate(state: Dict, snaps: pd.DataFrame, nav_df: Optional[pd.DataFrame], r
         checks.append(_chk("conf", "Güven oranı tutarlılığı", GREEN,
                            f"canlı ölçüm birikiyor ({c12.get('picks_n', 0)}/30 sonuçlanmış öneri)", None))
 
+    bfc = (report or {}).get("fundamentals_coverage")
+    if bfc is not None:
+        st = GREEN if bfc >= 0.5 else (YELLOW if bfc >= 0.2 else RED)
+        fsrc = (report or {}).get("fundamentals_source") or {}
+        checks.append(_chk("bt_fund", "Test: bilanço verisi", st,
+                           f"geçmiş testte hisselerin %{bfc * 100:.0f}'inde bilanço vardı"
+                           + ("" if bfc >= 0.2 else " — test bilançosuz yapılmış, sonuçlar güvenilmez"
+                              + (f" ({fsrc.get('error')})" if fsrc.get("error") else "")), bfc))
     gen = (report or {}).get("generated_at")
     age = (today - pd.Timestamp(gen[:10])).days if gen else None
     st = GREEN if age is not None and age <= 45 else (YELLOW if age is not None and age <= 100 else RED)

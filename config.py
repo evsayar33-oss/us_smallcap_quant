@@ -146,7 +146,8 @@ FUND_LAG_ANNUAL_DAYS = 100
 
 MARKET_TZ = "America/New_York"
 CLOSE_READY_MIN = 16 * 60 + 30     # after-close run allowed from 16:30 New York time
-SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "us_smallcap_quant research bot quantbot@users.noreply.github.com")
+# NOTE: GitHub passes an UNSET secret as an EMPTY string -> "or" falls back to the default (SEC rejects empty UAs)
+SEC_USER_AGENT = (os.environ.get("SEC_USER_AGENT") or "").strip() or "USSmallcapQuant Research admin@ussmallcapquant.org"
 
 
 # ---------------------------------------------------------------- V3.8 stock-only tranche engine

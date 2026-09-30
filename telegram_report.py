@@ -39,7 +39,7 @@ def pct(v, sign: bool = False, nd: int = 1) -> str:
 
 def hurdle_block(h: Dict) -> List[str]:
     if not isinstance(h, dict) or h.get("hurdle") is None:
-        return ["🎯 <b>Hedef hesaplanamadı</b> — TÜFE verisi yok, yeni alım yapılmadı."]
+        return ["🎯 <b>Hedef kartı hesaplanamadı</b> — enflasyon verisi alınamadı (hisse seçimi etkilenmez)."]
     parts = [f"{BENCH_TR[k]} {pct(h.get(k))}" for k in ("cpi", "usd", "gold", "deposit") if h.get(k) is not None]
     if h.get("mode") == "sum":
         edge = h.get("edge", 3.0)

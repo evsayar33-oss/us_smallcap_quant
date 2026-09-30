@@ -25,6 +25,51 @@ EVDS_CODES = [c.strip() for c in os.environ.get("EVDS_CPI_SERIES", "TP.FG.J0,TP.
 FRED_URLS = ["https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL",
              "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCNS"]
 FRED_TBILL_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3"
+FRED_API = "https://api.stlouisfed.org/fred/series/observations?series_id={sid}&api_key={key}&file_type=json&observation_start=1990-01-01"
+BLS_API = "https://api.bls.gov/publicAPI/v1/timeseries/data/CUSR0000SA0?startyear={a}&endyear={b}"
+
+
+def _fred_api(sid: str) -> Optional[pd.Series]:
+    """Official FRED API (needs the free FRED_API_KEY secret). Much more reliable from GitHub
+    runners than fredgraph.csv, which often times out."""
+    key = os.environ.get("FRED_API_KEY")
+    if not key:
+        return None
+    last = None
+    for _ in range(3):
+        try:
+            r = requests.get(FRED_API.format(sid=sid, key=key), timeout=45)
+            r.raise_for_status()
+            obs = r.json().get("observations", [])
+            s = pd.Series({pd.Timestamp(o["date"]): pd.to_numeric(o["value"], errors="coerce") for o in obs}).dropna()
+            if len(s) > 24:
+                return s.sort_index()
+        except Exception as exc:
+            last = exc
+    if last:
+        raise last
+    return None
+
+
+def _from_fred_api() -> Optional[pd.Series]:
+    s = _fred_api("CPIAUCSL")
+    return None if s is None else _clean(s)
+
+
+def _from_bls() -> Optional[pd.Series]:
+    """BLS public API v1 (keyless, 10 years per call): CPI-U all items, seasonally adjusted."""
+    this = pd.Timestamp.now().year
+    parts = []
+    for a in range(this - 19, this + 1, 10):
+        r = requests.get(BLS_API.format(a=a, b=min(a + 9, this)), timeout=45, headers={"User-Agent": "Mozilla/5.0"})
+        r.raise_for_status()
+        for srs in r.json().get("Results", {}).get("series", []):
+            for d in srs.get("data", []):
+                if str(d.get("period", "")).startswith("M") and d["period"] != "M13":
+                    parts.append((pd.Timestamp(int(d["year"]), int(d["period"][1:]), 1), float(d["value"])))
+    if not parts:
+        return None
+    return _clean(pd.Series(dict(parts)))
 DBNOMICS_URLS = ["https://api.db.nomics.world/v22/series/IMF/CPI/M.TR.PCPI_IX?observations=1&format=json",
                  "https://api.db.nomics.world/v22/series/OECD/MEI/TUR.CPALTT01.IXOB.M?observations=1&format=json"]
 PROXY_SAFETY_PP = 0.0     # no FX proxy for the US
@@ -159,7 +204,7 @@ def load_cpi(allow_network: bool = True) -> Tuple[pd.Series, Dict]:
     tried = {}
     sources = [("manual", _from_manual)]
     if allow_network:
-        sources += [("fred", _from_fred)]
+        sources += [("fred_api", _from_fred_api), ("fred", _from_fred), ("bls", _from_bls)]
     sources += [("cache", _from_cache)]
     best, best_name = None, None
     for name, fn in sources:
@@ -246,7 +291,14 @@ def load_cash_rate(allow_network: bool = True) -> Tuple[pd.Series, Dict]:
     """Monthly average 3-month T-bill rate (%, FRED DTB3) -> idle-cash yield and deposit benchmark."""
     s, meta = None, {"series": C.CASH_RATE_SERIES}
     if allow_network:
-        for _ in range(2):
+        errs = {}
+        try:                                                    # 1) official FRED API (key)
+            d = _fred_api("DTB3")
+            if d is not None:
+                s, meta["source"] = d.resample("MS").mean().dropna(), "fred_api_dtb3"
+        except Exception as exc:
+            errs["fred_api"] = str(exc)[:80]
+        if s is None:                                           # 2) fredgraph CSV (keyless)
             try:
                 r = requests.get(FRED_TBILL_URL, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
                 r.raise_for_status()
@@ -254,11 +306,24 @@ def load_cash_rate(allow_network: bool = True) -> Tuple[pd.Series, Dict]:
                 d = pd.Series(pd.to_numeric(df.iloc[:, 1], errors="coerce").to_numpy(), index=pd.to_datetime(df.iloc[:, 0])).dropna()
                 m = d.resample("MS").mean().dropna()
                 if len(m) > 24:
-                    s = m
-                    meta["source"] = "fred_dtb3"
-                    break
+                    s, meta["source"] = m, "fred_dtb3"
             except Exception as exc:
-                meta["error"] = str(exc)[:120]
+                errs["fred"] = str(exc)[:80]
+        if s is None:                                           # 3) Yahoo ^IRX (13-week T-bill yield, %)
+            try:
+                import yfinance as yf
+                raw = yf.download("^IRX", start="2005-01-01", progress=False, auto_adjust=False, threads=False)
+                c = raw["Close"]
+                if isinstance(c, pd.DataFrame):
+                    c = c.iloc[:, 0]
+                c.index = pd.to_datetime(c.index).tz_localize(None)
+                m = c.dropna().resample("MS").mean().dropna()
+                if len(m) > 24:
+                    s, meta["source"] = m, "yahoo_irx"
+            except Exception as exc:
+                errs["yahoo"] = str(exc)[:80]
+        if errs:
+            meta["errors"] = errs
     if s is not None and len(s):
         try:
             os.makedirs(C.DATA_DIR, exist_ok=True)
