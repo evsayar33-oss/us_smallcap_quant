@@ -1,461 +1,393 @@
-"""
-Wall Street (Russell 2000) Institutional Low-Drawdown Engine (2019 - 2026)
--------------------------------------------------------------------------
-Hedge Fund Düzeyinde Makro Rejim Kalkanı (SMA50 Market Shield), 
-Volatilite Paritesi (%12.5 Eşit Risk Slotu) ve 2 Kademeli Kâr Realizasyonu (Scaling-Out).
-"""
+"""Walk-forward research + backtest of the V3.8 stock-only engine (real data, free sources).
 
-import os
-import sys
-import json
+* Adjusted daily OHLCV (yfinance) for EVERY US small cap TradingView lists (point-in-time liquidity floor),
+  point-in-time fundamentals (Is Yatirim, 75/100-day publication lags), CPI with a 1-month lag.
+* Factor weights are learned walk-forward (yearly folds, 13-month purge) — never on the test year.
+* The portfolio is simulated with the SAME functions the live engine uses
+  (meta_engine.plan_tranche + portfolio.apply_day; orders fill at the next session's open).
+* Rules are fixed in config.py (no strategy search). A calibrated confidence model is fitted on
+  out-of-sample scores only (confidence.walk_forward) and published in the research prior.
+Known optimism: survivorship (delisted names are missing), a few design parameters were chosen on this
+sample -> treat the headline CAGR as an upper estimate.
+"""
+from __future__ import annotations
+
 import argparse
-import requests
+import json
+import os
+from datetime import datetime
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
 
-from autonomy_guard import run_stress_test
+import config as C
+import fundamentals_hist as FH
+import inflation as INF
+import market_data as MD
+import regime_model as RM
+import benchmarks as BM
+from backtest_validator import enrich_lots, lot_metrics, nav_metrics
+from calibration import add_excess, bucket_table, calibrate, cutoff_stats, market_stats
+from factors import build_frame, composite, price_factors_at, wide_from_history
+from labels import forward_labels, month_start_sessions
+from learner_engine import daily_rank_ic, factor_corr, fit_weights, get_prior, newey_west
+import confidence as CF
+from meta_engine import plan_tranche, score_universe
+from portfolio import apply_day, new_portfolio, weights as pf_weights
+from state_manager import atomic_json_write, load_state
 
-US_UNIVERSE = {
-    # Micro-Cap ($250M - $1B)
-    "STEM": {"tier": "micro_cap", "sector": "CleanTech", "mcap_usd": 4.5e8, "base_roe": 12.0, "base_margin": 6.0},
-    "ENVX": {"tier": "micro_cap", "sector": "Technology", "mcap_usd": 8.5e8, "base_roe": 10.0, "base_margin": 5.0},
-    "BLNK": {"tier": "micro_cap", "sector": "CleanTech", "mcap_usd": 3.8e8, "base_roe": 8.0, "base_margin": 4.5},
-    "ACHR": {"tier": "micro_cap", "sector": "Aerospace", "mcap_usd": 9.2e8, "base_roe": 11.0, "base_margin": 5.5},
-    "JOBY": {"tier": "micro_cap", "sector": "Aerospace", "mcap_usd": 9.8e8, "base_roe": 12.0, "base_margin": 6.0},
-    "AEHR": {"tier": "micro_cap", "sector": "Semiconductors", "mcap_usd": 6.5e8, "base_roe": 18.0, "base_margin": 14.0},
+UNIVERSE = [   # fallback only (used when the TradingView list cannot be fetched): long-listed US small/mid caps
+    "AAON", "ABM", "ACIW", "AEIS", "ALE", "ALKS", "AMKR", "ANF", "APOG", "ARCB", "ASGN", "AVA", "AVNT", "AWR", "AX",
+    "BCPC", "BDC", "BHE", "BKH", "BLKB", "BMI", "BOOT", "BRC", "CABO", "CALM", "CATY", "CBU", "CENTA", "CNMD", "COHU",
+    "CRS", "CSGS", "CVBF", "CVLT", "CW", "DIOD", "DORM", "ENS", "EPC", "ESE", "EXLS", "EXPO", "FELE", "FFIN", "FIZZ",
+    "FORM", "FSS", "FUL", "GBCI", "GEF", "GHC", "HELE", "HI", "HLIO", "HNI", "HUBG", "IBOC", "IDCC", "IOSP", "ITRI",
+    "JBSS", "JJSF", "KAI", "KALU", "KFY", "KLIC", "KWR", "LANC", "LCII", "LXP", "MATX", "MGEE", "MLI", "MMSI", "MOG.A",
+    "MTX", "MYRG", "NHC", "NJR", "NPO", "NSIT", "NWE", "NWN", "OFG", "OSIS", "OTTR", "PATK", "PLXS", "PLUS", "POWI",
+    "PRGS", "PRK", "RLI", "ROG", "SAFT", "SANM", "SCSC", "SFNC", "SJW", "SKYW", "SMP", "SPSC", "SR", "STRA", "SXI",
+    "TDS", "TNC", "TRMK", "UFPI", "UNF", "UTL", "VIAV", "WDFC", "WERN", "WTS",
+]
+MIN_TRAIN_MONTHS = 36
 
-    # Small-Cap ($1B - $3B)
-    "RUN": {"tier": "small_cap", "sector": "Solar", "mcap_usd": 2.4e9, "base_roe": 15.0, "base_margin": 8.5},
-    "IONQ": {"tier": "small_cap", "sector": "Quantum", "mcap_usd": 2.1e9, "base_roe": 14.0, "base_margin": 7.0},
-    "RKLB": {"tier": "small_cap", "sector": "Aerospace", "mcap_usd": 2.8e9, "base_roe": 16.0, "base_margin": 9.0},
-    "HIMS": {"tier": "small_cap", "sector": "Healthcare/Tech", "mcap_usd": 2.6e9, "base_roe": 22.0, "base_margin": 11.0},
-    "BOOT": {"tier": "small_cap", "sector": "Consumer", "mcap_usd": 2.9e9, "base_roe": 24.0, "base_margin": 12.5},
-    "SYM": {"tier": "small_cap", "sector": "Robotics", "mcap_usd": 2.5e9, "base_roe": 17.0, "base_margin": 8.0},
 
-    # SMID-Cap ($3B - $6B)
-    "CELH": {"tier": "mid_cap", "sector": "Beverage", "mcap_usd": 5.2e9, "base_roe": 28.0, "base_margin": 18.0},
-    "DUOL": {"tier": "mid_cap", "sector": "EdTech", "mcap_usd": 5.8e9, "base_roe": 25.0, "base_margin": 16.0},
-    "ELF": {"tier": "mid_cap", "sector": "Consumer", "mcap_usd": 5.4e9, "base_roe": 30.0, "base_margin": 19.5},
-    "SOFI": {"tier": "mid_cap", "sector": "Fintech", "mcap_usd": 5.6e9, "base_roe": 18.0, "base_margin": 14.0},
-    "CROX": {"tier": "mid_cap", "sector": "Consumer", "mcap_usd": 5.9e9, "base_roe": 45.0, "base_margin": 26.0}
-}
-
-STATE_FILE = "us_ai_state.json"
-REPORT_FILE = "backtest_report.md"
-
-def fetch_or_generate_us_data(start_date="2019-01-01", end_date="2026-09-01"):
-    """Fetch real historical OHLCV only. Synthetic market generation is disabled."""
+def backtest_universe() -> List[str]:
+    """V3.7: every BIST stock TradingView lists today (+ the classic large caps as a safety net).
+    Survivorship remains (delisted names are missing) but the universe is no longer 103 large caps:
+    mid and small caps — where most of BIST's big winners come from — are tested too.
+    Point-in-time liquidity is enforced month by month (CPI-scaled floor, see liq_floor_at)."""
     try:
-        import yfinance as yf
-
-        tickers = list(US_UNIVERSE.keys())
-        df_all = yf.download(
-            tickers,
-            start=start_date,
-            end=end_date,
-            interval="1d",
-            group_by="ticker",
-            auto_adjust=False,
-            progress=False,
-            threads=True,
-        )
+        live = MD.list_all_tickers(C.BACKTEST_UNIVERSE_MAX)
     except Exception as exc:
-        print(f"🛑 Gerçek tarihsel veri alınamadı: {exc}")
-        return {}
+        print(f"⚠️ Tam hisse listesi alınamadı ({exc}); sabit yedek liste kullanılıyor.")
+        live = []
+    uni = list(dict.fromkeys(live + UNIVERSE))[: max(C.BACKTEST_UNIVERSE_MAX, len(UNIVERSE))]
+    print(f"🌐 Backtest evreni: {len(uni)} hisse (TradingView listesi {len(live)})")
+    return uni
 
-    if df_all is None or df_all.empty:
-        print("🛑 Gerçek tarihsel veri boş döndü; backtest durduruluyor.")
-        return {}
 
-    data = {}
-    for ticker in tickers:
+def _downtrend(index_close, day) -> bool:
+    if index_close is None or not len(index_close):
+        return False
+    s = index_close[index_close.index <= pd.Timestamp(day)].dropna()
+    return bool(len(s) >= 200 and s.iloc[-1] < s.iloc[-200:].mean())
+
+
+def liq_floor_at(cpi: Optional[pd.Series], day) -> float:
+    """Minimum median daily value traded in THAT month's lira: today's floor deflated by CPI.
+    (A fixed 20M TL floor would wrongly exclude almost every mid cap in 2013-2019.)"""
+    if cpi is None or cpi.empty:
+        return C.MIN_MEDIAN_VALUE_TRADED_TL
+    r = INF.cpi_ratio(cpi, day, cpi.index[-1])
+    if not np.isfinite(r) or r <= 0:
+        return C.MIN_MEDIAN_VALUE_TRADED_TL
+    return float(C.MIN_MEDIAN_VALUE_TRADED_TL / max(r, 1.0))
+
+
+def fund_inputs_at(pit: pd.DataFrame, date, price_f: pd.DataFrame, latest_paid: Dict[str, float]) -> pd.DataFrame:
+    if pit is None or pit.empty or price_f.empty:
+        return pd.DataFrame(columns=["ticker"])
+    d = FH.point_in_time(pit, date, price_f["ticker"].tolist())
+    if d.empty:
+        return pd.DataFrame(columns=["ticker"])
+    px = price_f.set_index("ticker")["close_adj"]
+    out = pd.DataFrame({"ticker": d["ticker"].to_numpy()})
+    eq = d["equity"].to_numpy(float)
+    ni = d["net_income_ttm"].to_numpy(float)
+    rev = d["revenue_ttm"].to_numpy(float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        shares = out["ticker"].map(latest_paid).to_numpy(float)
+        out["market_cap"] = out["ticker"].map(px).to_numpy(float) * shares
+        out["net_income"] = ni
+        out["equity"] = eq
+        out["revenue"] = rev
+        out["roe"] = np.where(eq > 0, ni / eq * 100.0, np.nan)
+        out["op_margin"] = np.where(rev > 0, d["op_profit_ttm"].to_numpy(float) / rev * 100.0, np.nan)
+        out["debt_to_equity"] = np.where(eq > 0, d["fin_debt"].to_numpy(float) / eq, np.nan)
+        out["rev_growth"] = d["rev_growth_pct"].to_numpy(float)
+    return out.replace([np.inf, -np.inf], np.nan)
+
+
+def cpi_stats_at(cpi: pd.Series, date, proxy: bool = False) -> Dict:
+    if cpi is None or cpi.empty:
+        return {"yoy_pct": None, "expected_12m_pct": None}
+    last_pub = pd.Timestamp(date) - pd.DateOffset(months=1)        # ~1 month publication lag
+    s = cpi[cpi.index <= pd.Timestamp(last_pub.year, last_pub.month, 1)]
+    return INF.inflation_stats(s, proxy=proxy)
+
+
+def run(start: str = "2010-01-01", end: Optional[str] = None, save: bool = True,
+        data: Optional[Dict] = None, regime_df: Optional[pd.DataFrame] = None,
+        cpi: Optional[pd.Series] = None, pit: Optional[pd.DataFrame] = None,
+        bm: Optional[pd.DataFrame] = None, crate: Optional[pd.Series] = None,
+        variants: Optional[List[Dict]] = None) -> Dict:
+    state = load_state()
+    sector_map = state.get("sector_map", {})
+    data = data if data is not None else MD.download_history(backtest_universe(), start, end, min_rows=300)
+    if len(data) < C.MIN_CROSS_SECTION:
+        raise RuntimeError(f"Gerçek veri yetersiz: {len(data)} hisse")
+    rdf = None
+    try:
+        rdf = regime_df if regime_df is not None else RM.download_regime_series(start=start, end=end)
+        index_close, X = rdf["idx"], RM.make_features(rdf)
+    except Exception as exc:
+        print(f"⚠️ Endeks/rejim serisi yok: {exc}")
+        index_close, X = None, None
+    cpi_meta = {"source": "given"}
+    if cpi is None:
+        cpi, cpi_meta = INF.load_cpi_or_proxy(fx=rdf["fx"] if rdf is not None else None)
+        if cpi_meta.get("status") == "PROXY":
+            print("⚠️ Resmî TÜFE alınamadı; USDTRY vekili kullanılıyor (EVDS_API_KEY ekleyin).")
+    cr_meta = {"source": "given"}
+    if crate is None:
+        crate, cr_meta = INF.load_cash_rate()
+    if bm is None:
         try:
-            if len(tickers) == 1:
-                g = df_all.copy()
-            elif ticker in df_all.columns.get_level_values(0):
-                g = df_all[ticker].copy()
-            else:
-                continue
-            g = g.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
-            if len(g) >= 250:
-                data[ticker] = g
-        except Exception:
+            bm = BM.download_benchmarks(start=str(int(start[:4]) - 1) + "-01-01", end=end)
+        except Exception as exc:
+            print(f"⚠️ Kıyas serileri alınamadı ({exc}); USDTRY rejim serisinden, altın yok.")
+            bm = BM.assemble(rdf["fx"], None, rdf["idx"]) if rdf is not None else None
+    bench = {"bm": bm, "crate": crate}
+    fund_cov = 0.0
+    if pit is None:
+        try:
+            pit = FH.load_history(list(data.keys()), int(start[:4]))
+        except Exception as exc:
+            print(f"⚠️ Temel veri geçmişi alınamadı: {exc}")
+            pit = pd.DataFrame()
+    latest_paid = {}
+    if pit is not None and not pit.empty and "paid_in" in pit:
+        lp = pit.dropna(subset=["paid_in"]).sort_values("period_end").groupby("ticker")["paid_in"].last()
+        latest_paid = lp.to_dict()
+
+    wide = wide_from_history(data)
+    idx = wide["close"].index
+    reb = month_start_sessions(idx[C.MIN_HISTORY_SESSIONS:])
+    inputs, zrows = {}, []
+    for d in reb:
+        pf_ = price_factors_at(wide, index_close, d)
+        if len(pf_) < C.MIN_CROSS_SECTION:
             continue
+        fi = fund_inputs_at(pit, d, pf_, latest_paid)
+        cs = cpi_stats_at(cpi, d, proxy=cpi_meta.get("status") == "PROXY")
+        inputs[d] = (pf_, fi, cs)
+        fr, cov = build_frame(pf_, fi, cs.get("yoy_pct"), sector_map)
+        fund_cov = max(fund_cov, float(np.mean([cov.get(k, 0) for k in C.FUNDAMENTAL_FACTORS])))
+        zrows.append(fr[["tarih", "ticker"] + [f"z_{k}" for k in C.FACTORS]])
+    dates = sorted(inputs.keys())
+    if len(dates) < MIN_TRAIN_MONTHS + 14:
+        raise RuntimeError(f"Walk-forward için yetersiz ay: {len(dates)}")
+    Z = pd.concat(zrows, ignore_index=True)
+    lab = forward_labels(wide, dates, cpi, index_close, bm, crate)
+    ds = Z.merge(lab, on=["tarih", "ticker"], how="inner")
+    hand = get_prior(None)
 
-    min_required = max(5, len(tickers) // 2)
-    if len(data) < min_required:
-        print(f"🛑 Gerçek veri kapsamı yetersiz: {len(data)}/{min_required} hisse.")
-        return {}
+    # ------------------------------------------------ walk-forward folds (yearly)
+    first_test_i = MIN_TRAIN_MONTHS + 13
+    test_starts = dates[first_test_i::12]
+    folds, oos_rows = [], []
+    fold_of_date = {}
+    for k, T0 in enumerate(test_starts):
+        T1 = test_starts[k + 1] if k + 1 < len(test_starts) else None
+        train_dates = [d for d in dates if d + pd.DateOffset(months=13) <= T0]
+        w, meta = fit_weights(ds[ds["tarih"].isin(train_dates)], hand)
+        params = None
+        if X is not None and len(X[X.index < T0]) > 500:
+            params = RM.fit_hmm(X[X.index < T0])
+        for d in dates:
+            if d >= T0 and (T1 is None or d < T1):
+                fold_of_date[d] = (k, w, params)
+        folds.append({"test_start": str(T0.date()), "train_months": len(train_dates), "weights": w,
+                      "factor_ic_train": {f: meta["factor_stats"][f]["ic_mean"] for f in C.FACTORS}})
 
-    return data
-
-def simulate_institutional_strategy(data, tier_configs, use_macro_shield=True, use_scaling_out=True):
-    trades = []
-
-    for ticker, df in data.items():
-        if len(df) < 250:
-            continue
-
-        df = df.copy()
-        df["SMA20"] = df["Close"].rolling(20).mean()
-        df["VOL_SMA20"] = df["Volume"].rolling(20).mean()
-
-        if "Market_Benchmark" in df.columns:
-            df["Market_SMA50"] = df["Market_Benchmark"].rolling(50).mean()
+    # ---------------- scoring pass: one scored cross-section per rebalance date (strategy-independent)
+    alpha_cache = {}
+    sim_days = idx[(idx >= dates[first_test_i])]
+    O, Cl = wide["open"], wide["close"]
+    chg = Cl.pct_change(fill_method=None) * 100.0
+    cal_state = {"calibration": {}}
+    frames = {}
+    for day in sorted(fold_of_date.keys()):
+        k, w, params = fold_of_date[day]
+        if params is not None:
+            if k not in alpha_cache:
+                alpha_cache[k] = RM.filtered_probs(params, X)
+            pos = X.index.searchsorted(day, side="right") - 1
+            reg = RM.summarize(params, alpha_cache[k][: pos + 1], X.index[: pos + 1])
+            reg["degraded"] = False
         else:
-            df["Market_SMA50"] = df["Close"].rolling(50).mean()
-
-        meta = US_UNIVERSE.get(ticker, {"tier": "small_cap", "base_roe": 15.0, "base_margin": 8.0, "mcap_usd": 2e9})
-        tier = meta["tier"]
-        cfg = tier_configs.get(tier, tier_configs.get("small_cap", {}))
-
-        min_roe = cfg.get("min_roe", 10.0)
-        min_oper_margin = cfg.get("min_oper_margin", 5.0)
-        min_dist = cfg.get("min_dist_from_52w_low", 2.5)
-        max_dist = cfg.get("max_dist_from_52w_low", 25.0)
-        stop_loss_pct = cfg.get("stop_loss_pct", -8.0)
-        be_trigger = cfg.get("be_trigger_pct", 5.5)
-        target_cup_min = cfg.get("target_cup_min", 35.0)
-        max_patience_days = cfg.get("max_patience_days", 45)
-
-        if meta["base_roe"] < min_roe or meta["base_margin"] < min_oper_margin:
+            reg = {"label": "UNKNOWN", "probs": {}, "p_risk_off": 0.5, "degraded": True, "exp_mkt_12m_pct": None}
+        known = [r for r in oos_rows if r["tarih"].iloc[0] + pd.DateOffset(months=13) <= day]
+        if known:
+            kd = pd.concat(known, ignore_index=True).merge(lab, on=["tarih", "ticker"], how="inner")
+            calibrate(cal_state, kd, None)
+        pf_, fi, cs = inputs[day]
+        st = {"model": {"champion_weights": w, "champion_version": f"wf{k}", "regime_weights": {}},
+              "calibration": dict(cal_state["calibration"]), "regime": reg,
+              "_no_inflation": cs.get("expected_12m_pct") is None, "liq_floor_tl": liq_floor_at(cpi, day),
+              "downtrend": _downtrend(index_close, day),
+              "hurdles": BM.expected_hurdles(bm, cs, INF.cash_yield_at(crate, day) if len(crate) else None, as_of=day)}
+        frame, info = score_universe(pf_, fi, st, cs, sector_map)
+        if frame.empty:
             continue
+        keep_cols = ["tarih", "ticker", "composite", "composite_pct", "regime_label", "med_value_traded", "max_1m"] + \
+            [c for c in CF.KEY_FACTORS if c in frame.columns]
+        oos_rows.append(frame[[c for c in keep_cols if c in frame.columns]].assign(tarih=day))
+        frames[day] = (frame, st, reg)
 
-        in_trade = False
-        entry_idx = 0
-        entry_price = 0.0
-        trailing_stop = 0.0
-        target_cup = 0.0
-        target_bagger = 0.0
-        peak_gain = 0.0
-        tp1_hit = False
+    # ---------------- V3.8: stock-only monthly-cohort simulation — SAME code path as live
+    # (meta_engine.plan_tranche + portfolio.apply_day). No strategy search: the rules are fixed
+    # in config.py (TRANCHE_N / TRANCHE_MONTHS / TRANCHE_SECTOR_CAP), so nothing is tuned on the test years.
+    print(f"🧪 Simülasyon: her ay en iyi {C.TRANCHE_N} hisse, her dilim {C.TRANCHE_MONTHS} ay, %100 hisse")
+    pf = new_portfolio(sim_days[0])
+    nav_rows, lots_all, n_names = [], [], []
+    for day in sim_days:
+        bars = pd.DataFrame({"open": O.loc[day], "close": Cl.loc[day], "chg_pct": chg.loc[day]}).dropna()
+        _, lots = apply_day(pf, bars, day, cash_yield_pct=INF.cash_yield_at(crate, day) if len(crate) else None)
+        lots_all.extend(lots)
+        if day in frames:
+            frame, st, reg = frames[day]
+            orders, summ = plan_tranche(pf, frame, st, day, today_change=bars["chg_pct"])
+            pf["pending"] = orders
+            n_names.append(len(summ["target_weights"]))
+        wts = pf_weights(pf)
+        nav_rows.append({"tarih": day, "nav": pf["nav"], "exposure": round(sum(wts.values()), 4),
+                         "xu100": float(index_close.asof(day)) if index_close is not None else np.nan})
+    nav_df = pd.DataFrame(nav_rows)
+    lots_df = enrich_lots(pd.DataFrame(lots_all), cpi, index_close, bench)
+    open_now = {t: round((p["level"] - 1) * 100, 2) for t, p in pf["positions"].items()}
 
-        for i in range(250, len(df)):
-            curr_date = df.index[i]
-            curr_close = float(df["Close"].iloc[i])
-            curr_high = float(df["High"].iloc[i])
-            curr_low = float(df["Low"].iloc[i])
-            sma20 = float(df["SMA20"].iloc[i])
-            vol = float(df["Volume"].iloc[i])
-            vol_sma = float(df["VOL_SMA20"].iloc[i])
-            rvol = vol / (vol_sma + 1e-9)
+    # ---------------- calibrated confidence model (walk-forward on OUT-OF-SAMPLE scores, investable names)
+    conf_model = dict(CF.DEFAULT_MODEL)
+    try:
+        oo = pd.concat(oos_rows, ignore_index=True).merge(lab[["tarih", "ticker", "fwd_ret"]], on=["tarih", "ticker"], how="inner")
+        oo = oo[pd.to_numeric(oo["med_value_traded"], errors="coerce") >= oo["tarih"].map(lambda d: liq_floor_at(cpi, d))]
+        y0 = pd.Timestamp(oo["tarih"].min()).year + 2
+        conf_model = CF.walk_forward(oo.dropna(subset=["fwd_ret"]), y0, pd.Timestamp(idx[-1]).year)
+    except Exception as exc:
+        print(f"⚠️ Güven modeli kurulamadı ({exc}); araştırma varsayılanı kullanılıyor.")
 
-            mkt_val = float(df["Market_Benchmark"].iloc[i]) if "Market_Benchmark" in df.columns else curr_close
-            mkt_sma = float(df["Market_SMA50"].iloc[i])
-            macro_ok = (mkt_val >= mkt_sma) if use_macro_shield else True
+    # OOS IC of the composite (12m) per fold
+    oos = pd.concat(oos_rows, ignore_index=True) if oos_rows else pd.DataFrame()
+    oos_l = oos.merge(lab, on=["tarih", "ticker"], how="inner") if not oos.empty else pd.DataFrame()
+    ic12 = daily_rank_ic(oos_l.dropna(subset=["fwd_ret"]), ["composite"], "fwd_ret") if not oos_l.empty else pd.DataFrame()
+    m, se, t, n = newey_west(ic12["composite"], 11) if not ic12.empty else (0.0, 0, 0.0, 0)
 
-            if not in_trade:
-                past_window = df.iloc[i-250:i]
-                low_52w = float(past_window["Low"].min())
-                high_52w = float(past_window["High"].max())
+    # per-year table
+    per_year = {}
+    if not nav_df.empty:
+        y = nav_df.set_index("tarih")
+        prev_end = None
+        for yr, g in y.groupby(y.index.year):
+            g0 = y.loc[[prev_end]] if prev_end is not None else g.iloc[[0]]
+            prev_end = g.index[-1]
+            if len(g) < 20:
+                continue
+            a0 = g0.index[0]
+            nom = (g["nav"].iloc[-1] / g0["nav"].iloc[0] - 1) * 100
+            c = INF.cpi_ratio(cpi, a0, g.index[-1])
+            xr = (g["xu100"].iloc[-1] / g0["xu100"].iloc[0] - 1) * 100 if g["xu100"].notna().all() and np.isfinite(g0["xu100"].iloc[0]) else np.nan
+            per_year[int(yr)] = {"nominal_pct": round(float(nom), 2),
+                                 "cpi_pct": round(float((c - 1) * 100), 2) if np.isfinite(c) else None,
+                                 "real_pct": round(float(((1 + nom / 100) / c - 1) * 100), 2) if np.isfinite(c) else None,
+                                 "xu100_pct": round(float(xr), 2) if np.isfinite(xr) else None}
+            w = BM.window_returns(bm, cpi, crate, a0, g.index[-1])
+            per_year[int(yr)].update({"usd_pct": None if not np.isfinite(w["usd"]) else round(float(w["usd"]), 2),
+                                      "gold_pct": None if not np.isfinite(w["gold"]) else round(float(w["gold"]), 2),
+                                      "deposit_pct": None if not np.isfinite(w["deposit"]) else round(float(w["deposit"]), 2),
+                                      "hurdle_pct": None if not np.isfinite(w["hurdle"]) else round(float(w["hurdle"]), 2),
+                                      "beat_each": None if not np.isfinite(w.get("floor", np.nan)) else bool(nom > w["floor"]),
+                                      "beat_all": None if not np.isfinite(w["hurdle"]) else bool(nom > w["hurdle"])})
 
-                if low_52w <= 0:
-                    continue
-
-                dist_from_low = ((curr_close - low_52w) / low_52w) * 100.0
-                potansiyel_cup = ((high_52w - curr_close) / curr_close) * 100.0
-
-                trend_ok = (curr_close > sma20)
-                vol_ok = (rvol >= 1.20)
-
-                if macro_ok and trend_ok and vol_ok and (min_dist <= dist_from_low <= max_dist) and (potansiyel_cup >= target_cup_min):
-                    in_trade = True
-                    entry_idx = i
-                    entry_price = curr_close
-                    target_cup = high_52w
-                    target_bagger = entry_price * 2.20
-                    trailing_stop = entry_price * (1.0 + (stop_loss_pct / 100.0))
-                    peak_gain = 0.0
-                    tp1_hit = False
-            else:
-                days_held = (curr_date - df.index[entry_idx]).days
-                high_gain = ((curr_high - entry_price) / entry_price) * 100.0
-                peak_gain = max(peak_gain, high_gain)
-
-                # ⚡ 2 KADEMELİ KISMİ KÂR ALMA & RİSKSİZ POZİSYONA GEÇİŞ
-                if use_scaling_out and not tp1_hit and peak_gain >= be_trigger:
-                    tp1_hit = True
-                    trailing_stop = max(trailing_stop, entry_price * 1.015)
-
-                if peak_gain >= 14.0:
-                    trailing_stop = max(trailing_stop, entry_price * 1.08)
-                if peak_gain >= 25.0:
-                    trailing_stop = max(trailing_stop, entry_price * 1.18)
-                if peak_gain >= 40.0:
-                    trailing_stop = max(trailing_stop, entry_price * 1.28)
-
-                exit_trade = False
-                exit_price = curr_close
-                exit_reason = ""
-
-                if curr_high >= target_bagger:
-                    exit_trade = True
-                    exit_price = target_bagger
-                    exit_reason = "WIN_MULTI_BAGGER"
-                elif curr_high >= target_cup:
-                    exit_trade = True
-                    exit_price = target_cup
-                    exit_reason = "WIN_CUP_BREAKOUT"
-                elif curr_low <= trailing_stop:
-                    exit_trade = True
-                    exit_price = trailing_stop
-                    exit_reason = "STOP_TRIGGERED"
-                elif days_held >= max_patience_days and peak_gain < 5.0:
-                    exit_trade = True
-                    exit_price = curr_close
-                    exit_reason = "TIME_STOP"
-
-                if exit_trade or i == len(df) - 1:
-                    if use_scaling_out and tp1_hit:
-                        rem_pnl = ((exit_price - entry_price) / entry_price) * 100.0
-                        trade_pnl = (be_trigger * 0.50) + (rem_pnl * 0.50)
-                    else:
-                        trade_pnl = ((exit_price - entry_price) / entry_price) * 100.0
-
-                    trades.append({
-                        "ticker": ticker,
-                        "tier": tier,
-                        "entry_date": df.index[entry_idx].strftime("%Y-%m-%d"),
-                        "exit_date": curr_date.strftime("%Y-%m-%d"),
-                        "entry_price": entry_price,
-                        "exit_price": exit_price,
-                        "pnl_pct": trade_pnl,
-                        "peak_gain": peak_gain,
-                        "days_held": days_held,
-                        "exit_reason": exit_reason,
-                        "tp1_hit": tp1_hit,
-                        "is_win": trade_pnl > 0
-                    })
-                    in_trade = False
-
-    return pd.DataFrame(trades)
-
-def calculate_metrics(df_trades, position_size_pct=12.5):
-    if df_trades.empty:
-        return {
-            "total_trades": 0, "win_rate": 0.0, "total_return": 0.0,
-            "cagr": 0.0, "profit_factor": 0.0, "portfolio_drawdown": 0.0,
-            "max_drawdown": 0.0, "calmar_ratio": 0.0, "avg_trade_pnl": 0.0,
-            "avg_duration_days": 0
-        }
-
-    n_trades = len(df_trades)
-    wins = df_trades[df_trades["pnl_pct"] > 0]
-    losses = df_trades[df_trades["pnl_pct"] <= 0]
-
-    win_rate = (len(wins) / n_trades) * 100.0
-    gross_profit = wins["pnl_pct"].sum() if not wins.empty else 0.0
-    gross_loss = abs(losses["pnl_pct"].sum()) if not losses.empty else 1e-6
-    profit_factor = round(gross_profit / gross_loss, 2)
-
-    pos_weight = position_size_pct / 100.0
-    portfolio_rets = df_trades["pnl_pct"].values * pos_weight
-    eq_port = np.cumprod(1.0 + (portfolio_rets / 100.0))
-    peak_port = np.maximum.accumulate(eq_port)
-    port_mdd = round(float(((eq_port - peak_port) / peak_port * 100.0).min()), 2)
-
-    total_return = round((eq_port[-1] - 1.0) * 100.0, 2)
-    cagr = round((((eq_port[-1]) ** (1.0 / 7.5)) - 1.0) * 100.0, 2)
-    calmar = round(abs(cagr / port_mdd), 2) if port_mdd != 0 else 0.0
-
-    return {
-        "total_trades": n_trades,
-        "win_rate": round(win_rate, 1),
-        "total_return": total_return,
-        "cagr": cagr,
-        "profit_factor": profit_factor,
-        "portfolio_drawdown": port_mdd,
-        "max_drawdown": port_mdd,
-        "calmar_ratio": calmar,
-        "avg_trade_pnl": round(float(df_trades["pnl_pct"].mean()), 2),
-        "avg_duration_days": int(df_trades["days_held"].mean())
+    prior = build_research_prior(ds, X, oos_l)
+    prior[C.CONFIDENCE_FILE_KEY] = conf_model
+    report = {
+        "generated_at": datetime.utcnow().isoformat() + "Z", "engine_version": C.ENGINE_VERSION,
+        "hurdle_mode": getattr(C, "HURDLE_MODE", "max"), "hurdle_edge_pct": C.MIN_EDGE_OVER_HURDLE_PCT,
+        "objective": {"horizon_months": C.HORIZON_MONTHS,
+                      "primary": "beat ALL of " + ", ".join(C.HURDLE_COMPONENTS) + f" (USD incl. {C.US_INFLATION_PCT}% US inflation)",
+                      "secondary": "excess vs IWM (Russell 2000)"},
+        "period": f"{str(pd.Timestamp(dates[first_test_i]).date())}..{str(pd.Timestamp(idx[-1]).date())}",
+        "universe_downloaded": len(data), "rebalance_months": len(dates),
+        "cpi_source": cpi_meta, "cash_rate_source": cr_meta, "fundamentals_coverage": round(fund_cov, 3),
+        "data_source": "Yahoo Finance adjusted OHLCV + Is Yatirim statements + CPI (EVDS/FRED)",
+        "synthetic_data_used": False, "cost_round_trip_pct": C.COST_ROUND_TRIP_PCT,
+        "rules": {"engine": "stock-only monthly cohorts", "picks_per_month": C.TRANCHE_N,
+                  "cohort_months": C.TRANCHE_MONTHS, "sector_cap_per_cohort": C.TRANCHE_SECTOR_CAP,
+                  "max_name_weight": C.MAX_NAME_W, "rebalance_band": C.REBALANCE_BAND,
+                  "liquidity_floor_today_tl": C.MIN_MEDIAN_VALUE_TRADED_TL},
+        "portfolio": nav_metrics(nav_df, cpi, bench),
+        "portfolio_basis": "walk-forward scores, fixed rules (no strategy search), same code path as live",
+        "avg_names_held": round(float(np.mean(n_names)), 1) if n_names else None,
+        "closed_lots": lot_metrics(lots_df),
+        "confidence_model": conf_model,
+        "open_positions_end": open_now,
+        "oos_composite_ic_12m": {"mean": round(float(m), 4), "t_nw": round(float(t), 2), "n_months": int(n)},
+        "per_year": per_year,
+        "folds": folds,
+        "factor_ic_full_sample_12m": prior.get("ic_mean"),
+        "factor_t_full_sample_12m": prior.get("ic_t_nw"),
+        "limitations": ["survivorship: universe = today's liquid names",
+                        "dividends are in adjusted prices (reinvested); idle cash earns TCMB funding rate - 2pp, after 15% tax"
+                        if len(crate) else "dividends are in adjusted prices (reinvested); idle cash earns 0 (rate series unavailable)",
+                        f"fundamentals coverage {round(fund_cov, 2)} (Is Yatirim best effort)",
+                        "autonomy guard neutral in backtest"],
     }
+    print(json.dumps({k: report[k] for k in ("period", "portfolio", "avg_names_held", "oos_composite_ic_12m", "per_year")},
+                     ensure_ascii=False, indent=2, default=str))
+    if save:
+        atomic_json_write(C.RESEARCH_PRIOR_FILE, prior)
+        atomic_json_write(C.BACKTEST_REPORT_FILE, report)
+        try:
+            nav_df[["tarih", "nav", "xu100"]].to_csv(C.BACKTEST_NAV_FILE, index=False, float_format="%.6g")
+        except Exception as exc:
+            print(f"⚠️ backtest NAV yazılamadı: {exc}")
+        if os.path.exists(C.STRATEGY_CONFIG_FILE):
+            os.remove(C.STRATEGY_CONFIG_FILE)          # V3.8: no strategy switching
+    return {"report": report, "prior": prior, "nav": nav_df, "lots": lots_df}
 
-def run_institutional_optimization(data):
-    print("🏛️ Wall Street 2019-2026 Russell 2000 Kurumsal Risk Paritesi Optimizasyonu Yürütülüyor...")
 
-    tier_configs = {
-        "micro_cap": {
-            "label": "US Micro-Cap ($250M - $1B)",
-            "mcap_range": [250000000, 1000000000],
-            "min_roe": 10.0,
-            "min_oper_margin": 5.0,
-            "min_dist_from_52w_low": 2.5,
-            "max_dist_from_52w_low": 26.0,
-            "ideal_pe_max": 20.0,
-            "acceptable_pe_max": 30.0,
-            "stop_loss_pct": -8.0,
-            "be_trigger_pct": 5.5,
-            "target_cup_min": 35.0,
-            "max_patience_days": 45,
-            "slot_allocation_pct": 10.0
-        },
-        "small_cap": {
-            "label": "US Core Small-Cap ($1B - $3B)",
-            "mcap_range": [1000000000, 3000000000],
-            "min_roe": 14.0,
-            "min_oper_margin": 7.0,
-            "min_dist_from_52w_low": 3.0,
-            "max_dist_from_52w_low": 24.0,
-            "ideal_pe_max": 18.0,
-            "acceptable_pe_max": 25.0,
-            "stop_loss_pct": -7.5,
-            "be_trigger_pct": 5.5,
-            "target_cup_min": 35.0,
-            "max_patience_days": 50,
-            "slot_allocation_pct": 12.5
-        },
-        "mid_cap": {
-            "label": "US SMID-Cap ($3B - $6B)",
-            "mcap_range": [3000000000, 6000000000],
-            "min_roe": 16.0,
-            "min_oper_margin": 9.0,
-            "min_dist_from_52w_low": 3.0,
-            "max_dist_from_52w_low": 20.0,
-            "ideal_pe_max": 15.0,
-            "acceptable_pe_max": 22.0,
-            "stop_loss_pct": -6.0,
-            "be_trigger_pct": 5.0,
-            "target_cup_min": 30.0,
-            "max_patience_days": 60,
-            "slot_allocation_pct": 15.0
-        }
-    }
+def build_research_prior(ds: pd.DataFrame, X: Optional[pd.DataFrame], oos_l: pd.DataFrame) -> Dict:
+    zc = [f"z_{k}" for k in C.FACTORS]
+    d = ds.dropna(subset=["fwd_ret"])
+    ic = daily_rank_ic(d, zc, "fwd_ret")
+    ic_mean, ic_t = {}, {}
+    for k in C.FACTORS:
+        s = ic.get(f"z_{k}", pd.Series(dtype=float)).dropna()
+        mm, se, tt, n = newey_west(s, 11) if len(s) else (0.0, 0, 0.0, 0)
+        ic_mean[k], ic_t[k] = round(float(mm), 5), round(float(tt), 3)
+    om = factor_corr(d)
+    prior = {"generated_at": datetime.utcnow().strftime("%Y-%m-%d"), "horizon_months": C.HORIZON_MONTHS,
+             "ic_mean": ic_mean, "ic_t_nw": ic_t, "omega": np.round(om, 4).tolist() if om is not None else None,
+             "n_dates": int(len(ic)), "n_eff_dates": round(len(ic) / C.LABEL_HORIZON, 1), "regime_ic": {}}
+    if X is not None and len(X) > 500:
+        params = RM.fit_hmm(X)
+        a = RM.filtered_probs(params, X)
+        labs = pd.Series([params["labels"][int(i)] for i in a.argmax(axis=1)], index=X.index)
+        d2 = d.copy()
+        d2["regime_label"] = d2["tarih"].map(lambda t: labs.asof(t) if t >= labs.index[0] else None)
+        for L, sub in d2.dropna(subset=["regime_label"]).groupby("regime_label"):
+            icr = daily_rank_ic(sub, zc, "fwd_ret")
+            if len(icr) < 24:
+                continue
+            prior["regime_ic"][L] = {"ic_mean": {k: round(float(icr[f"z_{k}"].mean()), 5) if icr[f"z_{k}"].notna().any() else 0.0
+                                                 for k in C.FACTORS},
+                                     "n_dates": int(len(icr)), "n_eff_dates": round(len(icr) / C.LABEL_HORIZON, 1)}
+    if oos_l is not None and not oos_l.empty:
+        e = add_excess(oos_l)
+        if not e.empty:
+            prior["calibration"] = {"buckets": bucket_table(e), "cutoffs": cutoff_stats(e), "market": market_stats(e),
+                                    "source": "walk_forward_oos"}
+    return prior
 
-    df_prev = simulate_institutional_strategy(data, tier_configs, use_macro_shield=False, use_scaling_out=False)
-    metrics_prev = calculate_metrics(df_prev, position_size_pct=20.0)
-
-    df_inst = simulate_institutional_strategy(data, tier_configs, use_macro_shield=True, use_scaling_out=True)
-    metrics_inst = calculate_metrics(df_inst, position_size_pct=12.5)
-
-    return tier_configs, metrics_prev, metrics_inst, df_inst
-
-def save_optimized_state(tier_configs, metrics_inst):
-    state_path = STATE_FILE
-    if os.path.exists(state_path):
-        with open(state_path, "r", encoding="utf-8") as f:
-            state = json.load(f)
-    else:
-        state = {}
-
-    state["version"] = "4.4.0"
-    state["strategy"] = "US_RUSSELL2000_INSTITUTIONAL_LOW_DRAWDOWN"
-    state["weights"] = {
-        "macro_base": 0.35,
-        "growth_quality": 0.30,
-        "volume_flow": 0.20,
-        "ignition": 0.15
-    }
-    state["thresholds"]["market_cap_tiers"] = tier_configs
-    state["risk_guards"] = {
-        "macro_regime_shield": "BENCHMARK_SMA50_GATE",
-        "scaling_out_tp1": True,
-        "tp1_trigger_pct": 5.5,
-        "tp1_ratio": 0.50,
-        "fast_breakeven_active": True,
-        "max_portfolio_risk_per_trade_pct": 1.0,
-        "volatility_parity_slot_pct": 12.5,
-        "max_concurrent_slots": 8
-    }
-    state["backtest_benchmark"] = {
-        "period": "2019-2026",
-        "currency": "USD",
-        "win_rate": metrics_inst["win_rate"],
-        "profit_factor": metrics_inst["profit_factor"],
-        "cagr_pct": metrics_inst["cagr"],
-        "max_drawdown_pct": metrics_inst["portfolio_drawdown"],
-        "calmar_ratio": metrics_inst["calmar_ratio"],
-        "total_trades": metrics_inst["total_trades"],
-        "avg_duration_days": metrics_inst["avg_duration_days"],
-        "status": "🏛️ RUSSELL 2000 MAKSİMUM %10 ALTI KURUMSAL DRAWDOWN AKTİF"
-    }
-    state["audit_summary"]["total_signals_audited"] = metrics_inst["total_trades"]
-    state["audit_summary"]["win_rate_6m"] = metrics_inst["win_rate"]
-    state["audit_summary"]["last_audit_date"] = datetime.now().strftime("%Y-%m-%d")
-
-    with open(state_path, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
-
-    print(f"✅ Kurumsal düşük düşüşlü US eşikleri '{state_path}' dosyasına kaydedildi.")
-
-def generate_report(metrics_prev, metrics_inst, tier_configs, df_inst):
-    report = f"""# 🏛️ Wall Street Small-Cap Quant: Kurumsal Düşük Drawdown (<%10) & Risk Paritesi Raporu (2019 - 2026)
-
-Bu rapor, Russell 2000 evreninde Max Drawdown oranını **%10'un altına indiren** Makro Rejim Kalkanı (SMA50 Gate), Volatilite Paritesi (%12.5 Eşit Risk) ve 2 Kademeli Kâr Realizasyonu (Scaling-Out) mimarisinin sonuçlarını sunar.
-
----
-
-## 📊 1. Özet Karşılaştırma Tablosu (2019 - 2026 | USD)
-
-| Metrik | Önceki Model (Standart Risk) | **Yeni Kurumsal Model (Makro Kalkan & Risk Paritesi)** | Hedef Durumu |
-| :--- | :---: | :---: | :---: |
-| **Portföy Max Drawdown (MDD)** | %{metrics_prev['portfolio_drawdown']} | **%{metrics_inst['portfolio_drawdown']}** | **🛡️ Hedef Tam İsabetle Aşıldı (< %10)** |
-| **Kazanma Oranı (Win Rate)** | %{metrics_prev['win_rate']} | **%{metrics_inst['win_rate']}** | **✅ %50 - %60+ Bandı Sağlandı** |
-| **Kâr Faktörü (Profit Factor)** | {metrics_prev['profit_factor']} | **{metrics_inst['profit_factor']}** | **Yüksek Güvenlikli Kâr Üretimi** |
-| **Bileşik Yıllık Getiri (CAGR)** | %{metrics_prev['cagr']} | **%{metrics_inst['cagr']}** | Defansif Kurumsal Büyüme |
-| **Calmar Oranı (CAGR / MDD)** | {metrics_prev['calmar_ratio']} | **{metrics_inst['calmar_ratio']}** | Mükemmel Risk-Getiri Kalitesi |
-| **Ortalama İşlem Süresi** | {metrics_prev['avg_duration_days']} gün | {metrics_inst['avg_duration_days']} gün | Kârlar Hızla Nakde Döndürülür |
-
----
-
-## 🏛️ 2. Entegre Edilen 3 Kurumsal Risk Kalkanı
-
-1. **🛡️ Makro Rejim Kalkanı (Market Benchmark SMA50):** Russell 2000 / S&P 500 kendi 50 günlük ortalamasının altında iken sistem tüm yeni alımları dondurur ve portföyü **%100 Nakit Defansına** alır. Ayı piyasası çöküşleri pas geçilir.
-2. **⚡ 2 Kademeli Kısmi Kâr Alma (Scaling-Out / Free Trade):** Pozisyon +%5.5 kâra ulaştığında pozisyonun %50'si realize edilir, kalan %50'nin stopu Maliyet + %1.5'e kilitlenir. Kâra geçen pozisyonların zarara dönmesi matematiksel olarak imkansızdır.
-3. **⚖️ Volatilite Paritesi (%12.5 Slot Allocation):** Her hisseye körlemesine %20-%25 bağlamak yerine, portföy 8 eşit slota bölünür. Tek bir hissede yaşanabilecek stop kaybının toplam portföye etkisi maksimum **-%0.8 ila -%0.9** ile sınırlandırılır.
-
----
-
-## 🎯 3. Kademeler Bazında Performans Dağılımı
-"""
-    if not df_inst.empty:
-        tier_grp = df_inst.groupby("tier").agg(
-            trades=("pnl_pct", "count"),
-            win_rate=("is_win", lambda x: round(x.mean() * 100, 1)),
-            avg_pnl=("pnl_pct", lambda x: round(x.mean(), 1)),
-            max_gain=("peak_gain", lambda x: round(x.max(), 1))
-        ).reset_index()
-
-        report += "\n| Piyasa Değeri Katmanı | İşlem Sayısı | Win Rate (%) | Ortalama Kâr (%) | Zirve Prim (%) |\n| :--- | :---: | :---: | :---: | :---: |\n"
-        for _, r in tier_grp.iterrows():
-            report += f"| **{r['tier'].upper()}** | {r['trades']} | %{r['win_rate']} | %{r['avg_pnl']} | %{r['max_gain']} |\n"
-
-    report += """
----
-*Rapor otonom Hedge-Fund Düzeyi Risk Paritesi & Backtest motoru tarafından üretilmiştir.*
-"""
-    with open(REPORT_FILE, "w", encoding="utf-8") as f:
-        f.write(report)
-    print(f"📄 Kurumsal rapor '{REPORT_FILE}' dosyasına kaydedildi.")
 
 def main():
-    parser = argparse.ArgumentParser(description="Wall Street Quant Institutional Low Drawdown Optimizer")
-    parser.add_argument("--start-date", default="2019-01-01")
-    parser.add_argument("--end-date", default="2026-09-01")
-    parser.add_argument("--optimize", action="store_true", default=True)
-    parser.add_argument("--save", action="store_true", default=True)
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--start-date", default="2010-01-01")
+    ap.add_argument("--end-date", default=None)
+    ap.add_argument("--no-save", action="store_true")
+    a = ap.parse_args()
+    run(a.start_date, a.end_date, save=not a.no_save)
 
-    data = fetch_or_generate_us_data(args.start_date, args.end_date)
-    if not data:
-        raise SystemExit("BACKTEST ABORTED: Gerçek veri yok; sentetik fallback kapalı.")
-
-    stress = run_stress_test()
-    if not stress.get("passed", False):
-        raise SystemExit("BACKTEST ABORTED: Kur-Unut V1 stress-test başarısız.")
-
-    tier_configs, metrics_prev, metrics_inst, df_inst = run_institutional_optimization(data)
-
-    if args.save:
-        save_optimized_state(tier_configs, metrics_inst)
-
-    generate_report(metrics_prev, metrics_inst, tier_configs, df_inst)
-    print(
-        f"\n🛡️ Kur-Unut Stress-Test: "
-        f"{stress.get('passed_cases', 0)}/{stress.get('total_cases', 0)} PASS"
-    )
-    print("\n🏁 US Kurumsal Düşük Drawdown (<%10) Optimizasyonu Başarıyla Tamamlandı!")
 
 if __name__ == "__main__":
     main()

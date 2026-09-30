@@ -1,515 +1,410 @@
-import requests
-import pandas as pd
-import numpy as np
+"""US Small-Cap Real-Return Engine (port of BIST V3.10) — 100% stock portfolio, monthly cohorts,
+calibrated confidence, value-trap guard, system health. Daily run after the New York close.
+
+Every session:
+  * execute yesterday's orders at today's OPEN, mark the portfolio to the CLOSE
+    (adjusted change -> bonus issues are harmless), catastrophe-stop check,
+  * NAV vs IWM vs US CPI bookkeeping, autonomy guard.
+First session of every month (the monthly review):
+  * price factors from adjusted yfinance history + TradingView fundamentals,
+  * resolve 12-month labels of past monthly snapshots (nominal, REAL, vs IWM),
+  * learning (champion/challenger) + calibration of expected REAL return,
+  * V3.8: the top TRANCHE_N stocks form a new monthly cohort, cohorts are held TRANCHE_MONTHS,
+    every pick carries a calibrated confidence -> orders for the next open.
+`python main.py --self-test` runs everything on synthetic data in a temp folder.
+"""
+from __future__ import annotations
+
 import os
-from datetime import datetime
-import warnings
+import sys
+import tempfile
 
-from state_manager import load_ai_state, load_lifecycle_signals, LIFECYCLE_LOG_FILE
-from longterm_auditor import audit_and_calibrate
-from autonomy_guard import decide_guard, apply_to_scores, guard_summary
+if "--self-test" in sys.argv and "BOQ_DATA_DIR" not in os.environ:
+    os.environ["BOQ_DATA_DIR"] = tempfile.mkdtemp(prefix="boq3_selftest_")
 
-warnings.filterwarnings('ignore')
+import argparse  # noqa: E402
+from datetime import datetime  # noqa: E402
+from html import escape  # noqa: E402
 
-GECMIS_DOSYA = "gecmis_veri.csv"
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
-# =============================================================================
-# 1. TRADINGVIEW ABD PİYASA, SEKTÖR VE ESAS FAALİYET KÂRI VERİSİ
-# =============================================================================
+import calendar_tr as cal  # noqa: E402
+import config as C  # noqa: E402
+import inflation as INF  # noqa: E402
+import market_data as MD  # noqa: E402
+import regime_model as RM  # noqa: E402
+import benchmarks as BM  # noqa: E402
+import telegram_report as TG  # noqa: E402
+from autonomy_guard import evaluate_guard  # noqa: E402
+from backtest_validator import enrich_lots, lot_metrics, nav_metrics  # noqa: E402
+from calibration import calibrate  # noqa: E402
+from data_integrity import validate_market_frame  # noqa: E402
+from factors import price_factors_at, wide_from_history  # noqa: E402
+from labels import forward_labels  # noqa: E402
+from learner_engine import daily_rank_ic, live_composite_ic, newey_west, run_learning  # noqa: E402
+from meta_engine import GOLD_TICKER, plan_tranche, score_universe  # noqa: E402
+import confidence as CF  # noqa: E402
+import health as HL  # noqa: E402
+from state_manager import read_json  # noqa: E402
+from portfolio import apply_day, new_portfolio, weights as pf_weights  # noqa: E402
+from state_manager import (append_rows, load_monthly_snapshots, load_nav, load_research_prior,  # noqa: E402
+                           load_state, load_trade_log, save_monthly_snapshots, save_state)
 
-def get_us_smallcap_data():
-    url = "https://scanner.tradingview.com/america/scan"
-    payload = {
-        "filter": [
-            {"left": "type", "operation": "equal", "right": "stock"},
-            {"left": "exchange", "operation": "in_range", "right": ["AMEX", "NASDAQ", "NYSE"]},
-            {"left": "Value.Traded", "operation": "greater", "right": 2000000},
-            {"left": "market_cap_basic", "operation": "in_range", "right": [250000000, 6000000000]} # $250M - $6B
-        ],
-        "columns": [
-            "name", "close", "open", "high", "low", "volume", "change", "Value.Traded",
-            "price_52_week_high",
-            "price_52_week_low",
-            "market_cap_basic",
-            "return_on_equity_fq",
-            "price_earnings_ttm",
-            "price_book_fq",
-            "Perf.Y",
-            "relative_volume_10d_calc",
-            "Perf.1M",
-            "Perf.W",
-            "sector",
-            "industry",
-            "operating_margin" # 🛡️ ESAS FAALİYET MARJI KALKANI
-        ],
-        "sort": {"sortBy": "Value.Traded", "sortOrder": "desc"},
-        "range": [0, 500]
-    }
-    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
-    try:
-        res = requests.post(url, json=payload, headers=headers, timeout=15)
-        data = res.json()
-        rows = []
-        for item in data.get("data", []):
-            d = item["d"]
-            close_p = float(d[1]) if d[1] is not None else 0.0
-            high_p = float(d[3]) if d[3] is not None else close_p
-            low_p = float(d[4]) if d[4] is not None else close_p
-            
-            rows.append({
-                "ticker": d[0],
-                "close": close_p,
-                "open": float(d[2]) if d[2] is not None else close_p,
-                "high": high_p,
-                "low": low_p,
-                "volume": float(d[5]) if d[5] is not None else 0.0,
-                "change_%": float(d[6]) if d[6] is not None else 0.0,
-                "value_traded": float(d[7]) if d[7] is not None else 0.0,
-                "high_52w": float(d[8]) if d[8] is not None else close_p * 1.5,
-                "low_52w": float(d[9]) if d[9] is not None else close_p * 0.7,
-                "market_cap": float(d[10]) if d[10] is not None else 1000000000.0,
-                "roe": float(d[11]) if d[11] is not None else 12.0,
-                "pe": float(d[12]) if d[12] is not None else 15.0,
-                "pb": float(d[13]) if d[13] is not None else 2.0,
-                "perf_y": float(d[14]) if d[14] is not None else 0.0,
-                "rvol": float(d[15]) if len(d) > 15 and d[15] is not None else 1.0,
-                "perf_1m": float(d[16]) if len(d) > 16 and d[16] is not None else 0.0,
-                "perf_w": float(d[17]) if len(d) > 17 and d[17] is not None else 0.0,
-                "sector": str(d[18]) if len(d) > 18 and d[18] is not None else "Genel",
-                "industry": str(d[19]) if len(d) > 19 and d[19] is not None else "Genel",
-                "oper_margin": float(d[20]) if len(d) > 20 and d[20] is not None else 10.0,
-                "tarih": pd.Timestamp.now().normalize()
-            })
-        return pd.DataFrame(rows)
-    except Exception as e:
-        print(f"⚠️ US Piyasa Verisi Hatası: {e}")
-        return pd.DataFrame()
+FUND_COLS = ["ticker", "market_cap", "sector", "roe", "pe", "pb", "ps", "net_income", "revenue",
+             "rev_growth", "op_margin", "debt_to_equity", "div_yield"]
+LABEL_COLS = ["fwd_1m", "fwd_3m", "fwd_ret", "real_ret", "xu_excess", "cpi_12m_pct",
+              "hurdle_ret", "b_usd", "b_gold", "b_deposit", "beat_all"]
 
-# =============================================================================
-# 2. PİYASA DEĞERİ KADEMELERİ (USD) VE DİNAMİK EŞİK FONKSİYONU
-# =============================================================================
 
-def get_us_tier_thresholds(mcap, thresholds):
-    """
-    ABD piyasasında piyasa değerine ($250M - $1B Micro, $1B - $3B Small, $3B - $6B SMID)
-    göre optimize edilen dinamik eşikleri döner.
-    """
-    tiers = thresholds.get("market_cap_tiers", {})
-    if not tiers:
-        return {
-            "tier_name": "CORE_US",
-            "min_roe": thresholds.get("min_roe", 12.0),
-            "min_oper_margin": thresholds.get("min_oper_margin", 5.0),
-            "min_dist_from_52w_low": 3.0,
-            "max_dist_from_52w_low": 25.0,
-            "ideal_pe_max": 18.0,
-            "acceptable_pe_max": 30.0,
-            "stop_loss_pct": thresholds.get("macro_stop_loss_pct", -12.0),
-            "target_cup_min": 45.0,
-            "max_patience_days": 90
-        }
-
-    if mcap < 1_000_000_000:
-        cfg = tiers.get("micro_cap", {})
-        tier_name = "US_MICRO_CAP"
-    elif mcap < 3_000_000_000:
-        cfg = tiers.get("small_cap", {})
-        tier_name = "US_SMALL_CAP"
-    else:
-        cfg = tiers.get("mid_cap", {})
-        tier_name = "US_SMID_CAP"
-
-    return {
-        "tier_name": tier_name,
-        "min_roe": cfg.get("min_roe", 10.0),
-        "min_oper_margin": cfg.get("min_oper_margin", 5.0),
-        "min_dist_from_52w_low": cfg.get("min_dist_from_52w_low", 2.5),
-        "max_dist_from_52w_low": cfg.get("max_dist_from_52w_low", 30.0),
-        "ideal_pe_max": cfg.get("ideal_pe_max", 20.0),
-        "acceptable_pe_max": cfg.get("acceptable_pe_max", 32.0),
-        "stop_loss_pct": cfg.get("stop_loss_pct", -14.0),
-        "target_cup_min": cfg.get("target_cup_min", 40.0),
-        "max_patience_days": cfg.get("max_patience_days", 75)
-    }
-
-# =============================================================================
-# 3. REJİM VE KADEME DUYARLI RUSSELL 2000 QUANT MOTORU
-# =============================================================================
-
-def calculate_us_quant_scores(df, df_gecmis, state):
-    if df.empty:
-        return df
-
-    thresholds = state.get("thresholds", {})
-
-    # 1. WALL STREET PİYASA REJİMİ TESPİTİ
-    market_perf_median = float(df['perf_1m'].median())
-    if market_perf_median >= 0.0:
-        market_regime = "BOĞA / GENİŞLEME"
-        # Boğada momentum ödüllendirilir
-        weights = {"macro_base": 0.35, "growth_quality": 0.25, "volume_flow": 0.20, "ignition": 0.20}
-    else:
-        market_regime = "AYI / DURGUNLUK"
-        # Ayıda sahte kırılımlara karşı DEFANS MODU (Kârlılık %40 yapılır)
-        weights = {"macro_base": 0.35, "growth_quality": 0.40, "volume_flow": 0.20, "ignition": 0.05}
-
-    state["market_regime"] = market_regime
-    scored_data = []
-
-    for idx, row in df.iterrows():
-        item = row.to_dict()
-        close = float(item.get('close', 0.0))
-        high = float(item.get('high', close))
-        low = float(item.get('low', close))
-        change = float(item.get('change_%', 0.0))
-        rvol = float(item.get('rvol', 1.0))
-        
-        high_52w = float(item.get('high_52w', close * 1.5))
-        low_52w = float(item.get('low_52w', close * 0.7))
-        mcap = float(item.get('market_cap', 1000000000.0))
-        roe = float(item.get('roe', 12.0))
-        pe = float(item.get('pe', 15.0))
-        pb = float(item.get('pb', 2.0))
-        perf_y = float(item.get('perf_y', 0.0))
-        perf_1m = float(item.get('perf_1m', 0.0))
-        perf_w = float(item.get('perf_w', 0.0))
-        sector = item.get('sector', '')
-        industry = item.get('industry', '')
-        oper_margin = float(item.get('oper_margin', 10.0))
-
-        # Piyasa Değeri Katmanına Göre Dinamik Eşikleri Al
-        tier_cfg = get_us_tier_thresholds(mcap, thresholds)
-        t_min_roe = tier_cfg["min_roe"]
-        t_min_margin = tier_cfg["min_oper_margin"]
-        t_min_dist = tier_cfg["min_dist_from_52w_low"]
-        t_max_dist = tier_cfg["max_dist_from_52w_low"]
-        t_ideal_pe = tier_cfg["ideal_pe_max"]
-        t_accept_pe = tier_cfg["acceptable_pe_max"]
-        t_stop_pct = tier_cfg["stop_loss_pct"]
-        t_target_cup = tier_cfg["target_cup_min"]
-
-        dist_from_52w_low = ((close - low_52w) / (low_52w + 1e-9)) * 100.0 if low_52w > 0 else 0.0
-        target_cup = round(high_52w, 2)
-        target_bagger = round(close * 2.50, 2)
-        stop_price = round(min(low_52w * 0.96, close * (1.0 + (t_stop_pct / 100.0))), 2)
-        potansiyel_cup = round(((target_cup - close) / close) * 100.0, 1)
-
-        # 🛡️ 1. ESAS FAALİYET KÂRI KALKANI (KADEMELİ)
-        is_fake_profit = (oper_margin < t_min_margin)
-
-        # 🛡️ 2. BİYOTEKNOLOJİ / FDA KUMAR KALKANI
-        is_binary_biotech = False
-        if "biotechnology" in industry.lower() or "pharmaceuticals" in industry.lower():
-            if pe <= 0 or pe > 35.0 or roe < 20.0 or oper_margin < 10.0:
-                is_binary_biotech = True
-
-        # 🛡️ 3. RÖLATİF DÜŞEN BIÇAK
-        rel_perf_1m = perf_1m - market_perf_median
-        is_falling_knife = False
-        if rel_perf_1m < -14.0:
-            is_falling_knife = True
-        elif close <= low_52w * 1.004:
-            is_falling_knife = True
-
-        # 4. Zombi ve Aşırı Prim Filtresi
-        is_zombie = (roe < t_min_roe) or (pb <= 0.0) or is_fake_profit
-        is_overextended = (perf_y > 150.0) or (dist_from_52w_low > (t_max_dist * 1.5))
-
-        # 1. Kademeli Makro Taban Skoru
-        score_base = 20.0
-        if t_min_dist <= dist_from_52w_low <= t_max_dist:
-            score_base = 90.0
-            if potansiyel_cup >= t_target_cup:
-                score_base = 100.0
-        elif dist_from_52w_low <= (t_max_dist * 1.25):
-            score_base = 65.0
-
-        # 2. Kademeli Kalite Skoru
-        score_quality = 30.0
-        if roe >= (t_min_roe * 1.8) and oper_margin >= (t_min_margin * 1.8): score_quality += 45.0
-        elif roe >= (t_min_roe * 1.3) and oper_margin >= (t_min_margin * 1.3): score_quality += 30.0
-        elif roe >= t_min_roe and oper_margin >= t_min_margin: score_quality += 15.0
-
-        if 0 < pe <= t_ideal_pe: score_quality += 25.0
-        elif 0 < pe <= t_accept_pe: score_quality += 10.0
-        score_quality = min(max(score_quality, 5.0), 100.0)
-
-        # 3. Kapanış Gücü & Hacim Akışı
-        range_span = high - low
-        clv = ((close - low) - (high - close)) / range_span if range_span > 0 else 0.0
-        score_flow = round(min(max((max(clv, 0.0) * 70.0) + (min(rvol, 3.0) * 10.0), 10.0), 98.0), 1)
-
-        # 4. Hacimli Ateşleme
-        score_ignition = round(min(max((rvol * 35.0) + (max(change, 0.0) * 5.0), 10.0), 100.0), 1)
-
-        item['tier'] = tier_cfg['tier_name']
-        item['dist_from_52w_low'] = round(dist_from_52w_low, 1)
-        item['stop_price'] = stop_price
-        item['target_cup'] = target_cup
-        item['target_bagger'] = target_bagger
-        item['potansiyel_cup'] = potansiyel_cup
-        item['mcap_milyon'] = round(mcap / 1000000.0, 1)
-        item['score_base'] = score_base
-        item['score_quality'] = score_quality
-        item['score_flow'] = score_flow
-        item['score_ignition'] = score_ignition
-        item['is_disqualified'] = is_zombie or is_overextended or is_falling_knife or is_binary_biotech or is_fake_profit
-        item['is_biotech'] = is_binary_biotech
-        item['is_knife'] = is_falling_knife
-        item['is_fake'] = is_fake_profit
-        scored_data.append(item)
-
-    res_df = pd.DataFrame(scored_data)
-    if res_df.empty:
-        return res_df
-
-    res_df['pct_base'] = res_df['score_base'].rank(pct=True) * 100.0
-    res_df['pct_qual'] = res_df['score_quality'].rank(pct=True) * 100.0
-    res_df['pct_flow'] = res_df['score_flow'].rank(pct=True) * 100.0
-    res_df['pct_ign'] = res_df['score_ignition'].rank(pct=True) * 100.0
-
-    w_b = weights["macro_base"]
-    w_q = weights["growth_quality"]
-    w_f = weights["volume_flow"]
-    w_i = weights["ignition"]
-
-    raw_score = np.round(
-        res_df['pct_base'] * w_b +
-        res_df['pct_qual'] * w_q +
-        res_df['pct_flow'] * w_f +
-        res_df['pct_ign'] * w_i,
-        1
-    )
-
-    res_df['quant_score'] = np.where(
-        (res_df['change_%'] > 0.0) & (~res_df['is_disqualified']),
-        raw_score,
-        0.0
-    )
-
-    conditions = [
-        res_df['is_fake'],
-        res_df['is_biotech'],
-        res_df['is_knife'],
-        res_df['is_disqualified'],
-        (res_df['quant_score'] >= 65.0) & (res_df['potansiyel_cup'] >= 40.0),
-        (res_df['quant_score'] >= 50.0)
-    ]
-    choices = [
-        "⚠️ SAHTE KÂR (FAALİYET KÂRI YETERSİZ)",
-        "⚠️ BİYOTEK TUZAĞI (FDA RİSKİ)",
-        "🪤 DÜŞEN BIÇAK (RÖLATİF ÇÖKÜŞ)",
-        "⚠️ ELENDİ (ZOMBİ VEYA PRİMLİ)",
-        "🦅 US KULUÇKA LİDERİ (MULTI-BAGGER)",
-        "⚡ TABAN BİRİKTİRME (TAKİP)"
-    ]
-    res_df['regime'] = np.select(conditions, choices, default="NÖTR")
-
-    drop_cols = ['pct_base', 'pct_qual', 'pct_flow', 'pct_ign', 'is_disqualified', 'is_biotech', 'is_knife', 'is_fake']
-    res_df = res_df.drop(columns=[col for col in drop_cols if col in res_df.columns])
-
-    res_df['score_diff'] = 0.0
-    if not df_gecmis.empty and 'quant_score' in df_gecmis.columns:
-        son_tarih = df_gecmis['tarih'].max()
-        df_son = df_gecmis[df_gecmis['tarih'] == son_tarih]
-        eski_map = dict(zip(df_son['ticker'], df_son['quant_score']))
-        res_df['score_diff'] = np.round(res_df['quant_score'] - res_df['ticker'].map(eski_map).fillna(res_df['quant_score']), 1)
-
-    return res_df.sort_values(by='quant_score', ascending=False).reset_index(drop=True)
-
-# =============================================================================
-# 4. YAŞAM DÖNGÜSÜ GÜNLÜĞÜ
-# =============================================================================
-
-def log_lifecycle_signals(df_scored, state, guard_decision=None):
-    try:
-        guard_decision = guard_decision or {
-            "state": "NORMAL",
-            "entry_allowed": True,
-            "exposure_multiplier": 1.0,
-            "threshold_add": 0.0,
-        }
-        if not bool(guard_decision.get("entry_allowed", True)):
-            print("🛡️ KUR-UNUT SAFE MODE: yeni girişler lifecycle defterine alınmıyor.")
-            return
-
-        leaders = df_scored[df_scored['regime'].str.contains("US KULUÇKA LİDERİ")].copy()
-        wr_threshold = float(state.get("win_rate_optimizer", {}).get("active_threshold", 65.0))
-        base_threshold = max(65.0, wr_threshold) + float(guard_decision.get("threshold_add", 0.0))
-        if "quant_score" in leaders.columns:
-            leaders = leaders[leaders["quant_score"] >= base_threshold]
-        leaders = leaders.head(6)
-        if leaders.empty:
-            return
-
-        today = pd.Timestamp.now().normalize()
-        history_df = load_lifecycle_signals()
-
-        new_entries = []
-        for _, row in leaders.iterrows():
-            new_entries.append({
-                "tarih": today,
-                "ticker": row["ticker"],
-                "entry_price": float(row["close"]),
-                "stop_price": float(row["stop_price"]),
-                "target_cup": float(row["target_cup"]),
-                "target_bagger": float(row["target_bagger"]),
-                "last_seen_price": float(row["close"]),
-                "quant_score": float(row["quant_score"]),
-                "regime": row["regime"],
-                "score_base": float(row.get("score_base", 0)),
-                "score_quality": float(row.get("score_quality", 0)),
-                "score_flow": float(row.get("score_flow", 0)),
-                "score_ignition": float(row.get("score_ignition", 0)),
-                "ret_30d": np.nan,
-                "ret_90d": np.nan,
-                "ret_180d": np.nan,
-                "max_drawdown": 0.0,
-                "peak_gain": 0.0,
-                "outcome": "INCUBATING"
-            })
-
-        df_new = pd.DataFrame(new_entries)
-        if not history_df.empty:
-            existing_tickers = set(history_df[history_df["outcome"].isin(["INCUBATING", "PENDING"])]["ticker"].tolist())
-            df_to_add = df_new[~df_new["ticker"].isin(existing_tickers)]
-            if not df_to_add.empty:
-                combined = pd.concat([history_df, df_to_add], ignore_index=True)
-                combined.to_csv(LIFECYCLE_LOG_FILE, index=False)
-        else:
-            df_new.to_csv(LIFECYCLE_LOG_FILE, index=False)
-    except Exception as e:
-        print(f"⚠️ US Sinyal günlüğü hatası: {e}")
-
-# =============================================================================
-# 5. TELEGRAM VE RAPORLAMA SİSTEMİ
-# =============================================================================
-
-def send_telegram(message):
-    token = os.environ.get("TELEGRAM_TOKEN")
-    chat_id = os.environ.get("CHAT_ID")
+def send_telegram(message: str) -> bool:
+    """Send (HTML). Logs the outcome; on an HTML parse error retries as plain text; splits long texts."""
+    import re
+    import requests
+    token = (os.environ.get("TELEGRAM_TOKEN") or "").strip()
+    chat_id = (os.environ.get("CHAT_ID") or "").strip()
     if not token or not chat_id:
-        print("ℹ️ US Telegram bilgileri eksik, terminale yazdırılıyor.")
+        print("::warning::TELEGRAM_TOKEN / CHAT_ID secret'ı yok → mesaj yalnızca loga yazıldı.")
+        print(message)
         return False
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
+    chunks, buf = [], ""
+    for line in message.split("\n"):
+        if len(buf) + len(line) + 1 > 3900 and buf:
+            chunks.append(buf)
+            buf = ""
+        buf += (("\n" if buf else "") + line)
+    chunks.append(buf)
+    ok_all = True
+    for part in chunks:
+        ok = False
+        for mode in ("HTML", None):
+            body = {"chat_id": chat_id, "text": part if mode else re.sub(r"<[^>]+>", "", part),
+                    "disable_web_page_preview": True}
+            if mode:
+                body["parse_mode"] = mode
+            try:
+                r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=body, timeout=20)
+                if r.status_code == 200:
+                    ok = True
+                    break
+                print(f"::warning::Telegram {r.status_code}: {r.text[:300]}")
+            except Exception as exc:
+                print(f"::warning::Telegram hatası: {exc}")
+        ok_all &= ok
+    print("📨 Telegram gönderildi." if ok_all else "::error::Telegram mesajı gönderilemedi (TOKEN / CHAT_ID kontrol edin).")
+    return ok_all
+
+
+def _fingerprint(df: pd.DataFrame) -> str:
+    top = df.sort_values("value_traded", ascending=False).head(60)
+    return f"{np.round(top['close'].to_numpy(float), 4).sum():.4f}|{np.round(top['volume'].to_numpy(float), 0).sum():.0f}"
+
+
+def resolve_labels(snaps: pd.DataFrame, wide, cpi, index_close, bm=None, crate=None) -> pd.DataFrame:
+    """Fill 1m/3m/12m labels of past monthly snapshots once the windows have elapsed."""
+    if snaps.empty:
+        return snaps
+    s = snaps.copy()
+    for c in LABEL_COLS:
+        if c not in s.columns:
+            s[c] = np.nan
+    need = s[s["fwd_ret"].isna() | s["fwd_3m"].isna() | s["fwd_1m"].isna()]["tarih"].unique()
+    if len(need) and wide is not None:
+        lab = forward_labels(wide, list(need), cpi, index_close, bm, crate)
+        if not lab.empty:
+            lab = lab.rename(columns={c: f"{c}__new" for c in LABEL_COLS})
+            s = s.merge(lab, on=["tarih", "ticker"], how="left")
+            for c in LABEL_COLS:
+                s[c] = s[c].fillna(s[f"{c}__new"])
+            s = s.drop(columns=[f"{c}__new" for c in LABEL_COLS])
+    # real return can resolve later than the nominal one (CPI publication lag)
+    m = s["fwd_ret"].notna() & s["real_ret"].isna()
+    if m.any() and cpi is not None and len(cpi):
+        cr = INF.cpi_ratio_vec(cpi, s.loc[m, "tarih"], s.loc[m, "tarih"] + pd.DateOffset(months=12))
+        s.loc[m, "real_ret"] = ((1 + s.loc[m, "fwd_ret"] / 100.0) / cr - 1.0) * 100.0
+        s.loc[m, "cpi_12m_pct"] = (cr - 1.0) * 100.0
+    # multi-benchmark hurdle can also resolve later (CPI lag)
+    m2 = s["fwd_ret"].notna() & s["hurdle_ret"].isna()
+    if m2.any():
+        for d in s.loc[m2, "tarih"].unique():
+            w = BM.window_returns(bm, cpi, crate, d, pd.Timestamp(d) + pd.DateOffset(months=12))
+            if np.isfinite(w["hurdle"]):
+                mm = m2 & (s["tarih"] == d)
+                s.loc[mm, "hurdle_ret"] = w["hurdle"]
+                s.loc[mm, "b_usd"], s.loc[mm, "b_gold"], s.loc[mm, "b_deposit"] = w["usd"], w["gold"], w["deposit"]
+                s.loc[mm, "beat_all"] = (s.loc[mm, "fwd_ret"] > w["hurdle"]).astype(float)
+    return s
+
+
+def ic_stats(dataset: pd.DataFrame, target: str) -> dict:
+    if dataset is None or dataset.empty or target not in dataset:
+        return {"n_dates": 0}
+    d = dataset.dropna(subset=[target, "composite"])
+    ic = daily_rank_ic(d, ["composite"], target)
+    if ic.empty:
+        return {"n_dates": 0}
+    s = ic["composite"]
+    lag = 11 if target == "fwd_ret" else (2 if target == "fwd_3m" else 0)
+    m, se, t, n = newey_west(s, lag)
+    return {"n_dates": n, "ic_mean": round(m, 4), "t_nw": round(t, 2), "ic_recent": round(float(s.tail(6).mean()), 4)}
+
+
+def gold_bar_today(bm, today):
+    """Only used to SELL a legacy V3.5-3.7 gold sleeve (V3.8 never buys gold)."""
+    if bm is None or "gold_try" not in bm or bm["gold_try"].notna().sum() < 2:
+        return None
+    g = bm["gold_try"].dropna()
+    g = g[g.index <= pd.Timestamp(today)]
+    if len(g) < 2:
+        return None
+    return pd.DataFrame({"open": [g.iloc[-1]], "close": [g.iloc[-1]], "chg_pct": [(g.iloc[-1] / g.iloc[-2] - 1) * 100]},
+                        index=[GOLD_TICKER])
+
+
+def monthly_review(state, research, snap, today, index_close, cpi, cpi_stats, guard, hist_fn, as_of=None,
+                   bm=None, crate=None):
+    """`as_of` = last COMPLETED session (used by intraday refresh runs: no partial bars)."""
+    pf = state["portfolio"]
+    intraday = as_of is not None
+    today = pd.Timestamp(as_of) if intraday else today
+    snaps = load_monthly_snapshots()
+    universe = snap.sort_values("value_traded", ascending=False)["ticker"].head(C.SCAN_LIMIT).tolist()
+    universe = sorted(set(universe) | set(pf["positions"].keys()))
+    start = today - pd.Timedelta(days=430)
+    unresolved = []
+    if not snaps.empty:
+        pend = snaps[snaps.get("fwd_ret").isna()] if "fwd_ret" in snaps else snaps
+        pend = pend[pend["tarih"] >= today - pd.Timedelta(days=500)]
+        if not pend.empty:
+            start = min(start, pend["tarih"].min() - pd.Timedelta(days=10))
+            unresolved = sorted(set(pend["ticker"]))
+    hist = hist_fn(sorted(set(universe) | set(unresolved)), str(start.date()))
+    hist = {t: g[g.index <= today] for t, g in hist.items()}
+    hist = {t: g for t, g in hist.items() if len(g)}
+    if len(hist) < C.MIN_CROSS_SECTION:
+        return {"status": "HISTORY_UNAVAILABLE", "n_hist": len(hist)}, []
+    wide = wide_from_history(hist)
+    snaps = resolve_labels(snaps, wide, cpi, index_close, bm, crate)
+
+    dataset = snaps.dropna(subset=["fwd_ret"]) if not snaps.empty and "fwd_ret" in snaps else pd.DataFrame()
+    run_learning(state, dataset, research)
+    calibrate(state, dataset, research)
+    state["model"]["ic_live_12m"] = ic_stats(snaps, "fwd_ret")
+    state["model"]["ic_live_3m"] = ic_stats(snaps, "fwd_3m")
+
+    price_f = price_factors_at(wide, index_close, today)
+    price_f = price_f[price_f["ticker"].isin(universe)]
+    fund = snap[[c for c in FUND_COLS if c in snap.columns]].copy()
+    frame, info = score_universe(price_f, fund, state, cpi_stats, state.get("sector_map"))
+    if frame.empty:
+        return {"status": "NO_FACTORS", **info}, []
+    chg = None if intraday else snap.set_index("ticker")["change_pct"]
+    state.pop("active_strategy", None)
+    conf_prior = (research or {}).get(C.CONFIDENCE_FILE_KEY) if isinstance(research, dict) else None
+    conf_model, conf_meta = CF.live_update(conf_prior, snaps)          # self-improving confidence
+    state["confidence_model_meta"] = conf_meta
+    state["confidence_live"] = HL.confidence_live_check(snaps)
+    orders, summ = plan_tranche(pf, frame, state, today, today_change=chg, conf_model=conf_model)
+    conf_all = CF.predict(frame, conf_model)
+    frame = frame.assign(confidence=conf_all.to_numpy())
+    keep = [o for o in pf["pending"] if o.get("reason") == "CATASTROPHE_STOP"]
+    pf["pending"] = keep + [o for o in orders if o["ticker"] not in {k["ticker"] for k in keep}]
+    pf["last_rebalance_month"] = today.strftime("%Y-%m")
+
+    sel = set(summ.get("holds", [])) | set(summ.get("buys", []))
+    cols = ["ticker", "sector", "close_adj", "med_value_traded", "vol_ann_pct", "beta", "composite", "composite_pct",
+            "exp_real_12m", "exp_nominal_12m", "hurdle_12m", "exp_over_hurdle", "p_beat_cpi", "p_beat_all",
+            "regime_label", "model_version", "fund_break", "confidence", "max_1m"] + \
+        [f"f_{k}" for k in C.FACTORS] + [f"z_{k}" for k in C.FACTORS]
+    rec = frame[[c for c in cols if c in frame.columns]].copy()
+    rec["tarih"] = today
+    rec["selected"] = rec["ticker"].isin(sel)
+    for c in LABEL_COLS:
+        rec[c] = np.nan
+    base = snaps[snaps["tarih"] != today] if not snaps.empty else snaps
+    save_monthly_snapshots(pd.concat([base, rec], ignore_index=True) if not base.empty else rec)
+    top = frame[frame["ticker"].isin(summ.get("picks", []))].sort_values("composite", ascending=False)
+    state["last_picks"] = {"month": summ.get("month"), "picks": [
+        {"ticker": r["ticker"], "confidence": round(float(r["confidence"]), 4), "grade": summ["confidence_grade"].get(r["ticker"]),
+         "split": summ["suggested_split"].get(r["ticker"]), "score_pct": round(float(r["composite_pct"]), 1),
+         "sector": r.get("sector") if isinstance(r.get("sector"), str) else None,
+         "exp_nominal_12m": None if pd.isna(r.get("exp_nominal_12m")) else round(float(r["exp_nominal_12m"]), 1)}
+        for _, r in top.iterrows()]}
+    return {"status": "OK", **info, **summ}, top.to_dict("records")
+
+
+def run(force: bool = False, today=None, fetch=MD.fetch_snapshot, hist_fn=MD.download_history,
+        cpi_fn=INF.load_cpi, regime_fn=RM.download_regime_series, cash_fn=INF.load_cash_rate,
+        bench_fn=BM.download_benchmarks, refresh: bool = False, rescan: bool = False) -> dict:
+    real_run = today is None
+    today = pd.Timestamp(today) if today is not None else cal.today_tr()
+    refresh = bool(refresh)
+    if real_run and not force and not refresh:
+        now_tr = pd.Timestamp.now(tz=C.MARKET_TZ)
+        if now_tr.hour * 60 + now_tr.minute < C.CLOSE_READY_MIN or not cal.is_session(today):
+            refresh = True
+            print(f"ℹ️ Kapanış verisi yok ({now_tr:%d.%m %H:%M}) → YENİLEME modu: ABD TÜFE/T-bill/rejim güncellenir, "
+                  "gerekirse aylık gözden geçirme son tamamlanan seansa göre yenilenir; işlem/NAV kaydı yapılmaz.")
+    if not refresh and not cal.is_session(today) and not force:
+        print(f"ℹ️ {today.date()} NYSE seansı değil.")
+        return {"status": "NOT_SESSION"}
+    as_of = None
+    if refresh:
+        d = today - pd.Timedelta(days=1)
+        while not cal.is_session(d):
+            d -= pd.Timedelta(days=1)
+        as_of = d
+
+    state = load_state()
+    research = load_research_prior()
+    raw, meta = fetch(state)
+    if not raw.empty:
+        raw["tarih"] = today
+    snap, quality = validate_market_frame(raw)
+    state["data_quality"] = {**quality, "fetch": meta}
+    if snap.empty or not quality.get("ok"):
+        state["last_run"] = {"date": str(today.date()), "status": f"DATA_BLOCKED:{quality.get('reason')}"}
+        save_state(state)
+        send_telegram(TG.blocked_report(today, str(quality.get("reason"))))
+        return {"status": "DATA_BLOCKED"}
+    fp = _fingerprint(snap)
+    if refresh:
+        fp = state.get("last_run", {}).get("fingerprint")      # a refresh never consumes the day
+    elif not force and state.get("last_run", {}).get("fingerprint") == fp:
+        print("ℹ️ Veri bir önceki çalışmayla aynı (tatil/donmuş veri); atlandı.")
+        return {"status": "STALE"}
+    if "sector" in snap:
+        state.setdefault("sector_map", {}).update({t: s for t, s in zip(snap["ticker"], snap["sector"]) if isinstance(s, str) and s})
+
+    # regime + index
+    index_close = None
     try:
-        r = requests.post(url, json=payload, timeout=10)
-        return r.status_code == 200
-    except Exception as e:
-        print(f"⚠️ US Telegram hatası: {e}")
-        return False
+        rser = regime_fn()
+        index_close = rser["idx"]
+    except Exception as exc:
+        rser = None
+        print(f"⚠️ Rejim serisi alınamadı: {exc}")
+    RM.update_regime(state, snap, today, series=rser, allow_download=False)
 
-def format_telegram_report(df_scored, state, exit_alerts):
-    regime = state.get("market_regime", "BOĞA / GENİŞLEME")
-    audit = state.get("audit_summary", {})
-    
-    tarih_str = datetime.now().strftime("%d.%m.%Y")
-    regime_icon = "🟢" if "BOĞA" in regime else "🔴"
-    
-    msg = f"🦅 <b>WALL STREET MULTI-BAGGER TERMINAL</b> | <code>{tarih_str}</code>\n"
-    msg += f"───────────────────────\n"
-    msg += f"🧭 Wall Street Rejimi: {regime_icon} <b>{regime}</b>\n"
-    msg += f"🧠 Model Durumu: <b>{audit.get('status', 'Optimizasyon Tamamlandı')}</b>\n"
-    msg += f"🏆 6 Aylık Win Rate: <b>%{audit.get('win_rate_6m', 0.0):.1f}</b>\n"
-    msg += f"───────────────────────\n\n"
+    # inflation
+    cpi, cmeta = cpi_fn()
+    if cmeta.get("status") not in ("OK", "STALE") and rser is not None and "fx" in rser:
+        px = INF.proxy_from_fx(rser["fx"])
+        if len(px) >= 24:
+            cpi, cmeta = px, {**cmeta, "source": "USDTRY_PROXY", "status": "PROXY", "last_month": str(px.index[-1].date())}
+    cpi_stats = INF.inflation_stats(cpi, proxy=cmeta.get("status") == "PROXY")
+    state["inflation"] = {**cpi_stats, **cmeta}
 
-    if exit_alerts:
-        msg += "🚨 <b>DİNAMİK RİSK VE ÇIKIŞ UYARILARI (USD)</b>\n"
-        for alert in exit_alerts:
-            msg += f"• <b>#{alert['ticker']}</b>: {alert['msg']}\n"
-        msg += "\n"
-
-    guard_state = str(state.get("autonomy_guard", {}).get("state", "NORMAL")).upper()
-    if guard_state == "SAFE":
-        msg += (
-            "🛡️ <b>KUR-UNUT SAFE MODE:</b> "
-            "Yeni girişler otomatik olarak bloke edildi; mevcut skorlar yalnızca gözlem/öğrenme amacıyla tutuluyor.\n\n"
-        )
-        leaders = df_scored.iloc[0:0]
+    # portfolio: execute pending orders at today's open, mark to close
+    if not state.get("portfolio"):
+        state["portfolio"] = new_portfolio(today)
+    pf = state["portfolio"]
+    # A review taken while inflation was unknown had no real-return gate: cancel its
+    # not-yet-executed buys and redo the review now that an inflation estimate exists.
+    lr = state.get("last_rebalance", {}) or {}
+    if lr.get("status") == "OK" and lr.get("expected_inflation_12m") is None and cpi_stats.get("expected_12m_pct") is not None:
+        before = len(pf["pending"])
+        pf["pending"] = [o for o in pf["pending"] if o["action"] == "SELL"]
+        pf["last_rebalance_month"] = None
+        print(f"ℹ️ Enflasyon kapısı olmadan verilmiş {before - len(pf['pending'])} emir iptal edildi; aylık gözden geçirme yenileniyor.")
+    # Engine upgraded (or hurdle rule changed) after the review, or a manual rescan was asked:
+    # cancel the not-yet-executed buys of that review and redo it with the current logic.
+    stale_logic = (lr.get("status") == "OK" and pf.get("last_rebalance_month")
+                   and (lr.get("engine_version") != C.ENGINE_VERSION or lr.get("hurdle_mode") != getattr(C, "HURDLE_MODE", "max"))
+                   and any(o["action"] == "BUY" for o in pf["pending"]))
+    if rescan or stale_logic:
+        before = len(pf["pending"])
+        pf["pending"] = [o for o in pf["pending"] if o["action"] == "SELL"]
+        pf["last_rebalance_month"] = None
+        print(f"ℹ️ {'Elle yeniden tarama' if rescan else 'Motor güncellendi (' + str(lr.get('engine_version')) + ' → ' + C.ENGINE_VERSION + ')'}: "
+              f"{before - len(pf['pending'])} bekleyen alım iptal edildi, aylık gözden geçirme yeni kurallarla yenileniyor.")
+    crate, cr_meta = cash_fn()
+    cash_y = INF.cash_yield_at(crate, today)
+    state["cash_rate"] = {**cr_meta, "net_yield_pct": round(cash_y, 2)}
+    # benchmarks (USD, gold, Russell 2000) and the forward-looking multi-benchmark hurdle
+    try:
+        bm = bench_fn()
+    except Exception as exc:
+        print(f"⚠️ Kıyas serileri alınamadı ({exc}); USDTRY rejim serisinden kullanılıyor, altın yok.")
+        bm = BM.assemble(rser["fx"], None, rser["idx"]) if rser is not None else None
+    state["hurdles"] = BM.expected_hurdles(bm, cpi_stats, cash_y if len(crate) else None, as_of=as_of or today)
+    bench = {"bm": bm, "crate": crate}
+    events, lots = [], []
+    wts = pf_weights(pf)
+    nav_df = load_nav()
+    if not refresh:
+        bars = snap.set_index("ticker")[["open", "close", "change_pct"]].rename(columns={"change_pct": "chg_pct"})
+        gbar = gold_bar_today(bm, today)
+        if gbar is not None:
+            bars = pd.concat([bars, gbar])
+        events, lots = apply_day(pf, bars, today, cash_yield_pct=cash_y)
+        if lots:
+            append_rows(C.TRADE_LOG_FILE, lots)
+        xu = float(index_close.iloc[-1]) if index_close is not None and len(index_close) else np.nan
+        wts = pf_weights(pf)
+        append_rows(C.NAV_FILE, [{"tarih": str(today.date()), "nav": round(pf["nav"], 6), "cash": round(pf["cash"], 6),
+                                  "n_positions": len(pf["positions"]), "exposure": round(sum(wts.values()), 4),
+                                  "xu100": xu}])
+        nav_df = load_nav()
+        guard = evaluate_guard(state, features=snap, data_quality=quality.get("score", 0.0), rows=quality.get("rows"),
+                               live_ic=state.get("model", {}).get("ic_live_3m"), nav_df=nav_df)
     else:
-        leaders = df_scored[df_scored['regime'].str.contains("US KULUÇKA LİDERİ")].head(5)
+        g0 = state.get("autonomy_guard", {}) or {}
+        guard = {"mode": g0.get("mode", "WATCH"), "block_new_entries": bool(g0.get("block_new_entries", False))}
 
-    if not leaders.empty:
-        msg += "💎 <b>GÜNÜN US KULUÇKA LİDERLERİ (Multi-Bagger Adayları)</b>\n"
-        msg += "<i>(Piyasa Değeri Kademesi, Taban & Esas Faaliyet Kâr Teyitli)</i>\n\n"
-        
-        for idx, row in leaders.iterrows():
-            s_diff = row.get('score_diff', 0.0)
-            fark_str = f"+{s_diff:.1f}" if s_diff > 0 else f"{s_diff:.1f}"
-            tier_label = row.get('tier', 'US_SMALL_CAP')
-            
-            msg += f"⭐ <b>#{row['ticker']}</b> [{tier_label}] ── <b>Skor: {row['quant_score']:.1f}</b> <i>({fark_str})</i>\n"
-            msg += f"💵 Fiyat: <b>${row['close']:.2f}</b> (PD: <b>${row['mcap_milyon']:.0f}M</b> | {row.get('sector', 'N/A')})\n"
-            msg += f"📊 ROE: <b>%{row.get('roe', 0):.1f}</b> | F/K: <b>{row.get('pe', 0):.1f}</b> | Faaliyet Marjı: <b>%{row.get('oper_margin', 0):.1f}</b>\n"
-            msg += f"🎯 1. Çanak Hedefi: <b>${row['target_cup']:.2f}</b> (Potansiyel: <b>+%{row['potansiyel_cup']:.1f}</b>)\n"
-            msg += f"🚀 2. Multi-Bagger: <b>${row['target_bagger']:.2f}</b> (+%150)\n"
-            msg += f"🛡️ Taban Stop: <b>${row['stop_price']:.2f}</b> | 52H Dip Farkı: <b>%{row['dist_from_52w_low']:.1f}</b>\n"
-            msg += f"───────────────────────\n"
+    review, top = None, []
+    state["_no_inflation"] = cpi_stats.get("expected_12m_pct") is None
+    review_month = (as_of or today).strftime("%Y-%m")
+    if pf.get("last_rebalance_month") != review_month:
+        review, top = monthly_review(state, research, snap, today, index_close, cpi, cpi_stats, guard, hist_fn, as_of=as_of,
+                                     bm=bm, crate=crate)
+        state["last_rebalance"] = {"date": str((as_of or today).date()), "mode": "REFRESH" if refresh else "EOD",
+                                   "engine_version": C.ENGINE_VERSION, "hurdle_mode": getattr(C, "HURDLE_MODE", "max"),
+                                   **{k: v for k, v in review.items() if k not in ("weights",)}}
+
+    lots_all = enrich_lots(load_trade_log(), cpi, index_close, bench)
+    state["performance"] = {"nav": nav_metrics(nav_df, cpi, bench), "lots": lot_metrics(lots_all),
+                            "open_positions": {t: {"w": round(wts.get(t, 0), 4), "ret_pct": round((p["level"] - 1) * 100, 2),
+                                                   "since": p["entry_date"]} for t, p in pf["positions"].items()}}
+    state.pop("_no_inflation", None)
+    if not refresh:
+        state["last_eod_date"] = str(today.date())
+    try:
+        state["health"] = HL.evaluate(state, None, nav_df, read_json(C.BACKTEST_REPORT_FILE), today)
+    except Exception as exc:
+        state["health"] = {"overall": "UYARI", "checks": [], "error": str(exc)[:200]}
+    state["last_run"] = {"date": str(today.date()), "status": "OK", "fingerprint": fp, "mode": "REFRESH" if refresh else "EOD",
+                         "monthly_review": bool(review), "utc": datetime.utcnow().isoformat() + "Z"}
+    save_state(state)
+
+    if review and review.get("status") == "OK":
+        send_telegram(TG.monthly_report(as_of or today, state, review, top))
+    elif review:
+        send_telegram(f"⚠️ <b>ABD Small-Cap</b>\nAylık gözden geçirme tamamlanamadı ({escape(str(review.get('status')))}). Bir sonraki çalışmada tekrar denenecek.")
+        pf["last_rebalance_month"] = None
+        save_state(state)
+    elif events:
+        nv = pd.to_numeric(nav_df["nav"], errors="coerce").dropna() if nav_df is not None and "nav" in nav_df else pd.Series(dtype=float)
+        day_ret = float((nv.iloc[-1] / nv.iloc[-2] - 1) * 100) if len(nv) >= 2 else None
+        send_telegram(TG.events_report(today, events, state, day_ret))
     else:
-        msg += "ℹ️ Bugün tüm Wall Street kuluçka ve kalite filtrelerini geçen yeni hisse bulunamadı (USD Nakit Koruma).\n"
+        send_telegram(TG.status_report(today, state, refresh))
+    print(f"✅ {today.date()} [{'YENİLEME' if refresh else 'EOD'}] | NAV {pf['nav']:.4f} | pozisyon {len(pf['positions'])} | aylık={'evet' if review else 'hayır'}")
+    return {"status": "OK", "state": state, "events": events, "review": review}
 
-    msg += "\n<i>Not: Yatırım tavsiyesi değildir. Russell 2000 Quant Kuluçka Modeli çıktısıdır.</i>"
-    return msg
-
-# =============================================================================
-# 6. ANA YÜRÜTÜCÜ
-# =============================================================================
 
 def main():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🦅 Wall Street Quant Kuluçka Motoru Başlatılıyor...")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--force", action="store_true")
+    ap.add_argument("--refresh", action="store_true", help="TÜFE/nakit/rejim güncelle, işlem yapma")
+    ap.add_argument("--rescan", action="store_true", help="bu ayın taramasını şimdi yeniden yap (bekleyen alımlar iptal)")
+    a = ap.parse_args()
+    if a.self_test:
+        from selftest import run_self_test
+        sys.exit(0 if run_self_test() else 1)
+    run(force=a.force, refresh=a.refresh, rescan=a.rescan or os.environ.get("BOQ_RESCAN", "").lower() in ("1", "true", "evet"))
 
-    state = load_ai_state()
-    df_gecmis = pd.DataFrame()
-    if os.path.exists(GECMIS_DOSYA):
-        try:
-            df_gecmis = pd.read_csv(GECMIS_DOSYA)
-            if 'tarih' in df_gecmis.columns:
-                df_gecmis['tarih'] = pd.to_datetime(df_gecmis['tarih'])
-        except Exception:
-            pass
-
-    # 1. Denetçi ve Öğrenme Döngüsünü Çalıştır
-    state, exit_alerts = audit_and_calibrate()
-
-    # 2. ABD Piyasa Verilerini Çek
-    df_current = get_us_smallcap_data()
-    if df_current.empty:
-        print("⚠️ Güncel US verisi çekilemedi, işlem sonlandırılıyor.")
-        return
-
-    # 3. Kademeli US Quant Puanlarını Hesapla
-    df_scored = calculate_us_quant_scores(df_current, df_gecmis, state)
-
-    # 3A. KUR-UNUT V1: Regime Stress-Test + Drift + Safe-Mode + Recovery
-    state, guard_decision = decide_guard(
-        state=state,
-        current_df=df_current,
-        history_df=df_gecmis,
-        lifecycle_df=load_lifecycle_signals(),
-        run_test=True,
-    )
-    df_scored = apply_to_scores(df_scored, guard_decision)
-    state["autonomy_guard"]["status_summary"] = guard_summary(state)
-
-    # 4. Sinyalleri Kaydet
-    log_lifecycle_signals(df_scored, state, guard_decision)
-
-    # 5. Geçmiş Veriyi Güncelle
-    if not df_gecmis.empty:
-        df_yeni = pd.concat([df_gecmis, df_scored], ignore_index=True)
-    else:
-        df_yeni = df_scored
-    df_yeni.to_csv(GECMIS_DOSYA, index=False)
-
-    # Guard state is part of the persistent AI state; never replace the learned weights/state.
-    from state_manager import save_ai_state
-    save_ai_state(state)
-
-    # 6. Telegram Raporu Gönder
-    report = format_telegram_report(df_scored, state, exit_alerts)
-    send_telegram(report)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ US Quant Güncellemesi Başarıyla Tamamlandı!")
 
 if __name__ == "__main__":
     main()
