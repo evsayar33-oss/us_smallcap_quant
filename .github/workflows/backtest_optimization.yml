@@ -29,6 +29,7 @@ jobs:
       - name: Walk-forward backtest (real data only)
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python backtest_optimizer.py --start-date 2010-01-01
       - name: Commit research prior, report and caches
         run: |

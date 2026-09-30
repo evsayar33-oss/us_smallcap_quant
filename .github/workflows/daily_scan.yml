@@ -37,6 +37,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           BOQ_RESCAN: ${{ github.event.inputs.yeniden_tara || 'false' }}
         run: python main.py
       - name: Commit data
