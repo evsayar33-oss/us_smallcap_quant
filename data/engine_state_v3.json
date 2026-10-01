@@ -126,12 +126,12 @@
         "reason": "NEW_ENTRY",
         "target_w": 0.2,
         "stop_pct": null,
-        "entry_pct": 99.57,
-        "entry_conf": 0.528,
-        "entry_exp_real": 6.73,
-        "entry_exp_nominal": 10.9,
+        "entry_pct": 99.35,
+        "entry_conf": 0.5354,
+        "entry_exp_real": 8.5,
+        "entry_exp_nominal": 12.75,
         "entry_hurdle": 14.76,
-        "entry_p_beat_all": 0.336
+        "entry_p_beat_all": 0.346
       },
       {
         "ticker": "RSKD",
@@ -139,38 +139,38 @@
         "reason": "NEW_ENTRY",
         "target_w": 0.2,
         "stop_pct": null,
-        "entry_pct": 95.99,
-        "entry_conf": 0.4868,
-        "entry_exp_real": 6.73,
-        "entry_exp_nominal": 10.9,
+        "entry_pct": 98.91,
+        "entry_conf": 0.5,
+        "entry_exp_real": 8.5,
+        "entry_exp_nominal": 12.75,
         "entry_hurdle": 14.76,
-        "entry_p_beat_all": 0.336
+        "entry_p_beat_all": 0.346
       },
       {
-        "ticker": "SILC",
+        "ticker": "MTW",
         "action": "BUY",
         "reason": "NEW_ENTRY",
         "target_w": 0.2,
         "stop_pct": null,
-        "entry_pct": 95.83,
-        "entry_conf": 0.4936,
-        "entry_exp_real": 6.73,
-        "entry_exp_nominal": 10.9,
+        "entry_pct": 98.62,
+        "entry_conf": 0.5197,
+        "entry_exp_real": 8.5,
+        "entry_exp_nominal": 12.75,
         "entry_hurdle": 14.76,
-        "entry_p_beat_all": 0.336
+        "entry_p_beat_all": 0.346
       },
       {
-        "ticker": "KRT",
+        "ticker": "XRX",
         "action": "BUY",
         "reason": "NEW_ENTRY",
         "target_w": 0.2,
         "stop_pct": null,
-        "entry_pct": 95.67,
-        "entry_conf": 0.5123,
-        "entry_exp_real": 6.73,
-        "entry_exp_nominal": 10.9,
+        "entry_pct": 98.55,
+        "entry_conf": 0.5034,
+        "entry_exp_real": 8.5,
+        "entry_exp_nominal": 12.75,
         "entry_hurdle": 14.76,
-        "entry_p_beat_all": 0.336
+        "entry_p_beat_all": 0.346
       }
     ],
     "last_rebalance_month": "2026-09",
@@ -180,25 +180,25 @@
       {
         "month": "2026-09",
         "tickers": [
-          "XMAX",
           "CNXN",
+          "XMAX",
           "RSKD",
-          "SILC",
-          "KRT"
+          "MTW",
+          "XRX"
         ],
         "confidence": {
-          "XMAX": 0.528,
-          "CNXN": 0.5367,
-          "RSKD": 0.4868,
-          "SILC": 0.4936,
-          "KRT": 0.5123
+          "CNXN": 0.5411,
+          "XMAX": 0.5354,
+          "RSKD": 0.5,
+          "MTW": 0.5197,
+          "XRX": 0.5034
         },
         "w": {
-          "XMAX": 0.2,
           "CNXN": 0.2,
+          "XMAX": 0.2,
           "RSKD": 0.2,
-          "SILC": 0.2,
-          "KRT": 0.2
+          "MTW": 0.2,
+          "XRX": 0.2
         }
       }
     ],
@@ -241,39 +241,39 @@
       "real_growth": 0.0
     },
     "regime_weights": {
-      "NEUTRAL": {
-        "mom_12_1": 0.05707,
-        "high_52w": 0.06979,
-        "trend_consistency": -0.01517,
-        "low_vol": 0.05918,
-        "low_beta": -0.02078,
-        "dd_resilience": 0.08538,
-        "liquidity": -0.30001,
-        "roe": 0.13175,
-        "earnings_yield": -0.03457,
-        "book_yield": 0.0263,
-        "sales_yield": 0.0211,
-        "op_margin": -0.0956,
-        "low_leverage": 0.0,
-        "div_yield": 0.0,
-        "real_growth": 0.0833
-      },
       "RISK_ON": {
-        "mom_12_1": 0.0,
-        "high_52w": 0.03398,
-        "trend_consistency": 0.03178,
-        "low_vol": 0.04815,
-        "low_beta": -0.11196,
-        "dd_resilience": 0.02154,
-        "liquidity": -0.29623,
-        "roe": 0.02461,
-        "earnings_yield": 0.00946,
-        "book_yield": 0.17833,
-        "sales_yield": 0.17443,
-        "op_margin": -0.02178,
+        "mom_12_1": -0.00255,
+        "high_52w": 0.03088,
+        "trend_consistency": 0.02892,
+        "low_vol": 0.05418,
+        "low_beta": -0.11542,
+        "dd_resilience": 0.01831,
+        "liquidity": -0.30002,
+        "roe": 0.02391,
+        "earnings_yield": 0.00886,
+        "book_yield": 0.1557,
+        "sales_yield": 0.18702,
+        "op_margin": -0.02612,
         "low_leverage": 0.0,
         "div_yield": 0.0,
-        "real_growth": -0.04775
+        "real_growth": -0.04812
+      },
+      "NEUTRAL": {
+        "mom_12_1": 0.04881,
+        "high_52w": 0.06052,
+        "trend_consistency": -0.01534,
+        "low_vol": 0.05336,
+        "low_beta": -0.01852,
+        "dd_resilience": 0.07651,
+        "liquidity": -0.27438,
+        "roe": 0.10899,
+        "earnings_yield": -0.02915,
+        "book_yield": -0.01427,
+        "sales_yield": 0.13872,
+        "op_margin": -0.08257,
+        "low_leverage": 0.0,
+        "div_yield": 0.0,
+        "real_growth": 0.07888
       }
     },
     "prior_source": "research:2026-10-01",
@@ -297,100 +297,100 @@
       {
         "lo": 0.0,
         "hi": 50.0,
-        "mean_excess": 3.571,
-        "se": 3.281,
-        "p_beat_cpi": 0.5024,
-        "p_beat_all": 0.3457,
+        "mean_excess": 2.441,
+        "se": 3.159,
+        "p_beat_cpi": 0.5036,
+        "p_beat_all": 0.3445,
         "live_n_dates": 0
       },
       {
         "lo": 50.0,
         "hi": 70.0,
-        "mean_excess": -2.891,
-        "se": 2.394,
-        "p_beat_cpi": 0.5476,
-        "p_beat_all": 0.3451,
+        "mean_excess": -2.319,
+        "se": 2.724,
+        "p_beat_cpi": 0.5451,
+        "p_beat_all": 0.3471,
         "live_n_dates": 0
       },
       {
         "lo": 70.0,
         "hi": 80.0,
-        "mean_excess": -3.704,
-        "se": 3.805,
-        "p_beat_cpi": 0.5603,
-        "p_beat_all": 0.3505,
+        "mean_excess": -3.029,
+        "se": 3.082,
+        "p_beat_cpi": 0.5609,
+        "p_beat_all": 0.3485,
         "live_n_dates": 0
       },
       {
         "lo": 80.0,
         "hi": 90.0,
-        "mean_excess": -3.465,
-        "se": 3.545,
-        "p_beat_cpi": 0.5632,
-        "p_beat_all": 0.3508,
+        "mean_excess": -1.835,
+        "se": 3.665,
+        "p_beat_cpi": 0.5692,
+        "p_beat_all": 0.3567,
         "live_n_dates": 0
       },
       {
         "lo": 90.0,
         "hi": 95.0,
-        "mean_excess": -2.851,
-        "se": 3.994,
-        "p_beat_cpi": 0.5684,
-        "p_beat_all": 0.3519,
+        "mean_excess": -0.885,
+        "se": 4.444,
+        "p_beat_cpi": 0.5806,
+        "p_beat_all": 0.3609,
         "live_n_dates": 0
       },
       {
         "lo": 95.0,
         "hi": 100.01,
-        "mean_excess": -6.87,
-        "se": 5.736,
-        "p_beat_cpi": 0.5677,
-        "p_beat_all": 0.3361,
+        "mean_excess": -4.444,
+        "se": 5.045,
+        "p_beat_cpi": 0.5668,
+        "p_beat_all": 0.3461,
         "live_n_dates": 0
       }
     ],
     "status": "CALIBRATED",
     "cutoffs": {
       "75.0": {
-        "mean_excess": -4.019,
-        "se": 4.048,
-        "lcb": -9.206
+        "mean_excess": -2.473,
+        "se": 3.774,
+        "lcb": -7.31
       },
       "80.0": {
-        "mean_excess": -4.168,
-        "se": 4.049,
-        "lcb": -9.357
+        "mean_excess": -2.254,
+        "se": 3.978,
+        "lcb": -7.352
       },
       "85.0": {
-        "mean_excess": -4.461,
-        "se": 4.413,
-        "lcb": -10.116
+        "mean_excess": -2.236,
+        "se": 4.182,
+        "lcb": -7.596
       },
       "90.0": {
-        "mean_excess": -4.869,
-        "se": 4.783,
-        "lcb": -10.999
+        "mean_excess": -2.672,
+        "se": 4.602,
+        "lcb": -8.569
       }
     },
     "market": {
       "RISK_OFF": {
-        "mean": 18.604,
-        "se": 22.378,
-        "basis": "real"
-      },
-      "all": {
-        "mean": 16.45,
-        "se": 8.964,
-        "basis": "real"
-      },
-      "NEUTRAL": {
-        "mean": 14.082,
-        "se": 4.783,
+        "mean": 18.646,
+        "se": 22.241,
         "basis": "real"
       },
       "RISK_ON": {
-        "mean": 17.923,
-        "se": 9.825,
+        "mean": 16.714,
+        "se": 8.683,
+        "basis": "real"
+      },
+      "all": {
+        "mean": 15.796,
+        "se": 8.711,
+        "basis": "real"
+      },
+      "NEUTRAL": {
+        "mean": 13.428,
+        "se": 4.363,
         "basis": "real"
       }
     },
@@ -2635,7 +2635,26 @@
     "CD": "Technology Services",
     "MYFW": "Finance",
     "CV": "Health Technology",
-    "ATLQ": "Finance"
+    "ATLQ": "Finance",
+    "JOBY": "Electronic Technology",
+    "RZAI": "Technology Services",
+    "BLDR": "Retail Trade",
+    "FNB": "Finance",
+    "GATX": "Transportation",
+    "HR": "Finance",
+    "TEX": "Producer Manufacturing",
+    "INGR": "Consumer Non-Durables",
+    "CWEN": "Utilities",
+    "IVAI": "Miscellaneous",
+    "OIM": "Finance",
+    "BRTM": "Finance",
+    "JENA": "Finance",
+    "KRAQ": "Finance",
+    "DMII": "Finance",
+    "CRAN": "Finance",
+    "MTNE": "Finance",
+    "TACH": "Finance",
+    "CEPV": "Finance"
   },
   "performance": {
     "nav": {
@@ -2680,30 +2699,30 @@
     "status": "OK",
     "model_version": "prior-research-2026-10-01+NEUTRAL",
     "coverage": {
-      "mom_12_1": 0.997,
+      "mom_12_1": 0.998,
       "high_52w": 1.0,
       "trend_consistency": 1.0,
       "low_vol": 1.0,
       "low_beta": 1.0,
       "dd_resilience": 1.0,
       "liquidity": 1.0,
-      "roe": 0.941,
+      "roe": 0.938,
       "earnings_yield": 0.993,
-      "book_yield": 0.94,
+      "book_yield": 0.939,
       "sales_yield": 0.994,
-      "op_margin": 0.929,
-      "low_leverage": 0.948,
-      "div_yield": 1.0,
-      "real_growth": 0.919
+      "op_margin": 0.933,
+      "low_leverage": 0.942,
+      "div_yield": 0.999,
+      "real_growth": 0.924
     },
     "calibrated": true,
     "market_12m": {
-      "mkt_12m_pct": 14.082,
+      "mkt_12m_pct": 13.428,
       "source": "calibrated_regime",
       "basis": "real"
     },
     "expected_inflation_12m": 3.91,
-    "n_scored": 1870,
+    "n_scored": 1377,
     "hurdles": {
       "cpi": 3.91,
       "usd": null,
@@ -2721,38 +2740,38 @@
     "expiring_next": [],
     "extended": [],
     "picks": [
-      "XMAX",
       "CNXN",
+      "XMAX",
       "RSKD",
-      "SILC",
-      "KRT"
+      "MTW",
+      "XRX"
     ],
     "confidence": {
-      "XMAX": 0.528,
-      "CNXN": 0.5367,
-      "RSKD": 0.4868,
-      "SILC": 0.4936,
-      "KRT": 0.5123
+      "CNXN": 0.5411,
+      "XMAX": 0.5354,
+      "RSKD": 0.5,
+      "MTW": 0.5197,
+      "XRX": 0.5034
     },
     "confidence_grade": {
-      "XMAX": "Düşük",
       "CNXN": "Düşük",
+      "XMAX": "Düşük",
       "RSKD": "Düşük",
-      "SILC": "Düşük",
-      "KRT": "Düşük"
+      "MTW": "Düşük",
+      "XRX": "Düşük"
     },
     "suggested_split": {
-      "XMAX": 0.2245,
-      "CNXN": 0.2943,
-      "RSKD": 0.1604,
-      "SILC": 0.1604,
-      "KRT": 0.1604
+      "CNXN": 0.3011,
+      "XMAX": 0.2593,
+      "RSKD": 0.1465,
+      "MTW": 0.1465,
+      "XRX": 0.1465
     },
     "buys": [
       "XMAX",
       "RSKD",
-      "SILC",
-      "KRT"
+      "MTW",
+      "XRX"
     ],
     "sells": [
       "CRMD",
@@ -2770,18 +2789,18 @@
       "CNXN"
     ],
     "target_weights": {
-      "XMAX": 0.2,
       "CNXN": 0.2,
+      "XMAX": 0.2,
       "RSKD": 0.2,
-      "SILC": 0.2,
-      "KRT": 0.2
+      "MTW": 0.2,
+      "XRX": 0.2
     },
     "exit_month": {
-      "XMAX": "2027-03",
       "CNXN": "2027-03",
+      "XMAX": "2027-03",
       "RSKD": "2027-03",
-      "SILC": "2027-03",
-      "KRT": "2027-03"
+      "MTW": "2027-03",
+      "XRX": "2027-03"
     },
     "n_cohorts": 1,
     "cash_target": 0.0
@@ -2792,14 +2811,14 @@
     "fingerprint": "3248.0400|572024629",
     "mode": "REFRESH",
     "monthly_review": true,
-    "utc": "2026-10-01T13:44:25.612750Z"
+    "utc": "2026-10-01T15:05:34.322089Z"
   },
   "data_quality": {
     "ok": true,
-    "score": 93.3,
-    "rows": 2015,
-    "invalid_rows": 2,
-    "recommended_missing_rate": 0.1093,
+    "score": 93.5,
+    "rows": 1461,
+    "invalid_rows": 0,
+    "recommended_missing_rate": 0.1088,
     "fetch": {
       "source": "tradingview",
       "fields": {
@@ -2817,7 +2836,7 @@
         "div_yield": "dividends_yield_current",
         "shares": "total_shares_outstanding_fundamental"
       },
-      "rows": 2017
+      "rows": 1461
     }
   },
   "cash_rate": {
@@ -2849,62 +2868,62 @@
     "month": "2026-09",
     "picks": [
       {
-        "ticker": "XMAX",
-        "confidence": 0.528,
+        "ticker": "CNXN",
+        "confidence": 0.5411,
         "grade": "Düşük",
-        "split": 0.2245,
+        "split": 0.3011,
         "score_pct": 99.6,
-        "sector": "Consumer Durables",
-        "exp_nominal_12m": 10.9
+        "sector": "Technology Services",
+        "exp_nominal_12m": 12.7
       },
       {
-        "ticker": "CNXN",
-        "confidence": 0.5367,
+        "ticker": "XMAX",
+        "confidence": 0.5354,
         "grade": "Düşük",
-        "split": 0.2943,
-        "score_pct": 97.1,
-        "sector": "Technology Services",
-        "exp_nominal_12m": 10.9
+        "split": 0.2593,
+        "score_pct": 99.3,
+        "sector": "Consumer Durables",
+        "exp_nominal_12m": 12.7
       },
       {
         "ticker": "RSKD",
-        "confidence": 0.4868,
+        "confidence": 0.5,
         "grade": "Düşük",
-        "split": 0.1604,
-        "score_pct": 96.0,
+        "split": 0.1465,
+        "score_pct": 98.9,
         "sector": "Technology Services",
-        "exp_nominal_12m": 10.9
+        "exp_nominal_12m": 12.7
       },
       {
-        "ticker": "SILC",
-        "confidence": 0.4936,
+        "ticker": "MTW",
+        "confidence": 0.5197,
         "grade": "Düşük",
-        "split": 0.1604,
-        "score_pct": 95.8,
+        "split": 0.1465,
+        "score_pct": 98.6,
+        "sector": "Producer Manufacturing",
+        "exp_nominal_12m": 12.7
+      },
+      {
+        "ticker": "XRX",
+        "confidence": 0.5034,
+        "grade": "Düşük",
+        "split": 0.1465,
+        "score_pct": 98.5,
         "sector": "Electronic Technology",
-        "exp_nominal_12m": 10.9
-      },
-      {
-        "ticker": "KRT",
-        "confidence": 0.5123,
-        "grade": "Düşük",
-        "split": 0.1604,
-        "score_pct": 95.7,
-        "sector": "Process Industries",
-        "exp_nominal_12m": 10.9
+        "exp_nominal_12m": 12.7
       }
     ]
   },
   "health": {
     "date": "2026-10-01",
-    "overall": "UYARI",
+    "overall": "OK",
     "checks": [
       {
         "key": "scan",
         "name": "Veri: hisse taraması",
         "status": "OK",
-        "msg": "TradingView 2015 hisse döndürdü",
-        "value": 2015
+        "msg": "TradingView 1461 hisse döndürdü",
+        "value": 1461
       },
       {
         "key": "cpi",
@@ -2918,7 +2937,7 @@
         "name": "Veri: bilanço verileri",
         "status": "OK",
         "msg": "hisselerin %96'inde bilanço verisi var",
-        "value": 0.958
+        "value": 0.95775
       },
       {
         "key": "run",
@@ -2966,8 +2985,8 @@
         "key": "bt_fund",
         "name": "Test: bilanço verisi",
         "status": "OK",
-        "msg": "geçmiş testte hisselerin %64'inde bilanço vardı",
-        "value": 0.639
+        "msg": "geçmiş testte hisselerin %59'inde bilanço vardı",
+        "value": 0.587
       },
       {
         "key": "model_age",
@@ -2982,13 +3001,6 @@
         "status": "OK",
         "msg": "canlı geçmiş kısa (0 ay); 1 aydan sonra ölçülür",
         "value": null
-      },
-      {
-        "key": "th",
-        "name": "Hedef avcısı",
-        "status": "UYARI",
-        "msg": "testi henüz yok (Walk Forward Backtest çalışınca ölçülür)",
-        "value": null
       }
     ],
     "live_vs_test": {
@@ -2997,37 +3009,35 @@
     "win_rates": {
       "closed_lots": {
         "live": 0,
-        "test": 184
+        "test": 171
       },
       "hit_nominal_pct": {
         "live": null,
-        "test": 67.4
+        "test": 65.5
       },
       "hit_beat_xu100_pct": {
         "live": null,
-        "test": 44.6
+        "test": 43.3
       },
       "hit_beat_cpi_pct": {
         "live": null,
-        "test": 61.0
+        "test": 60.9
       },
       "hit_beat_all_pct": {
         "live": null,
-        "test": 40.1
+        "test": 36.1
       },
       "avg_nominal_pct": {
         "live": null,
-        "test": 8.89
+        "test": 6.84
       },
       "avg_months_held": {
         "live": null,
-        "test": 12.9
+        "test": 13.2
       }
     },
     "red": [],
-    "yellow": [
-      "Hedef avcısı"
-    ]
+    "yellow": []
   },
   "last_eod_date": "2026-09-30",
   "target_hunter": {
