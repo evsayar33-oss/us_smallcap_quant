@@ -172,7 +172,7 @@ else:
     st.markdown(f'<div class="card note mut">Portföy {dstr(pf.get("start_date"))} tarihinde başladı. '
                 'Getiri kartları ilk işlem günlerinden sonra görünür.</div>', unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs(["Portföy", "Hisse Ara", "Performans", "Sağlık"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Portföy", "Hisse Ara", "Performans", "Sağlık", "Hedef Avcısı"])
 
 # ------------------------------------------------------------------ PORTFÖY
 with tab1:
@@ -449,3 +449,78 @@ with st.expander("Teknik detay"):
              "dilimler": pf.get("cohorts"), "hedef": hz, "TÜFE": inf, "nakit": state.get("cash_rate"),
              "rejim olasılıkları": reg.get("probs"), "sağlık": HS.get("checks"),
              "canlı IC": {"12A": m.get("ic_live_12m"), "3A": m.get("ic_live_3m")}, "kapanan pozisyonlar": perf.get("lots")})
+
+
+# ------------------------------------------------------------------ HEDEF AVCISI (V3.11)
+with tab5:
+    import target_hunter as THM
+    THM.set_active((state.get("target_hunter") or {}).get("active"))
+    TH_ = state.get("target_hunter") or {}
+    THB = (report or {}).get("target_hunter") or {}
+    T_ = THM._cfg("TH_TARGET", 5.0)
+    tr_ = THM._cfg("TH_TRAIL", None)
+    rule = (f"Her ay boş slotlar ({THM._cfg('TH_SLOTS', 8)} hisse) en küçük + en ucuz (defter ve kâra göre)"
+            + (" + yüksek faaliyet marjlı" if "margin" in THM._cfg("TH_COMPONENTS", []) else "") + " hisselerle doldurulur. "
+            f"Satış: <b>{T_:g}× hedef</b>"
+            + (f", {tr_[0]:g}× sonrası zirveden %{tr_[1] * 100:.0f} geri çekilme" if tr_ else "")
+            + f", en geç {THM._cfg('TH_MAX_MONTHS', 24)} ay. Zarar-kes (stop) yok: testte zararla kapanan işlem sayısını artırdı.")
+    st.markdown(f'<div class="card"><div class="lbl">Ayrı hisse sepeti · ana portföyden bağımsız</div>'
+                f'<div class="note" style="margin-top:6px">{rule}</div></div>', unsafe_allow_html=True)
+    if THB.get("status") == "OK":
+        kp = "".join(f'<div style="flex:1"><div class="lbl">{a}</div><div class="big">{b}</div></div>' for a, b in [
+            ("Yıllık (test)", pct(THB.get("cagr_pct"))), ("Rastgele seçim", pct(THB.get("random_cagr_pct"))),
+            ("Zararla kapanan", pct(THB.get("loss_rate_pct"))), (f"{T_:g}× hedefe ulaşan", pct(THB.get("target_hit_pct")))])
+        st.markdown(f'<div class="card"><div class="lbl">Walk-forward test (aynı kurallar, gerçek veri)</div>'
+                    f'<div style="display:flex;gap:12px;flex-wrap:wrap">{kp}</div>'
+                    f'<div class="note mut" style="margin-top:6px">Yarısından fazla kaybettiren %{THB.get("heavy_loss_pct")} · '
+                    f'ort. kazanç {pct(THB.get("avg_win_pct"), True)} · ort. kayıp {pct(THB.get("avg_loss_pct"), True)} · '
+                    f'en büyük düşüş {pct(THB.get("max_dd_pct"))} · {THB.get("n_trades")} işlem</div></div>', unsafe_allow_html=True)
+        py = THB.get("per_year") or {}
+        if py:
+            st.markdown('<div class="card"><div class="lbl">Yıllara göre (test)</div>' + "".join(
+                f'<div class="row"><div>{y}</div><div class="{cls(v)}">{pct(v, True)}</div></div>' for y, v in py.items()) + "</div>",
+                unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="card note mut">Test sonucu Walk Forward Backtest çalışınca görünür.</div>', unsafe_allow_html=True)
+    if TH_.get("paused"):
+        st.markdown('<div class="card note neg"><b>⛔ Yeni alımlar durduruldu</b> (açık pozisyonların satış kuralları sürüyor): '
+                    + "; ".join(TH_.get("pause_reasons") or []) + "</div>", unsafe_allow_html=True)
+    for chg in (TH_.get("changes") or [])[-3:]:
+        st.markdown(f'<div class="card note">🔧 {dstr(chg.get("date"))}: kural güncellendi — {chg.get("label")}</div>', unsafe_allow_html=True)
+    cs_ = TH_.get("challenger_streak") or {}
+    if cs_.get("n"):
+        st.markdown(f'<div class="card note mut">🔬 Aday kural: {cs_.get("label")} — {cs_["n"]}/{THM._cfg("TH_CHALLENGER_CONFIRM", 3)} ay doğrulandı '
+                    '(yeterince doğrulanırsa ve son değişiklikten 12 ay geçtiyse uygulanır).</div>', unsafe_allow_html=True)
+    pos = TH_.get("positions") or {}
+    if pos:
+        def _pp(t, p):
+            q = THM.prices(p)
+            extra = ""
+            if q:
+                extra = f' · 🎯 hedef {THM._px(q["target"])}'
+                if "lock" in q:
+                    extra += f' · 🔒 kâr kilidi {THM._px(q["lock"])}'
+                elif "lock_trigger" in q:
+                    extra += f' · kâr kilidi {THM._px(q["lock_trigger"])} üstünde başlar'
+                if "last_day" in q:
+                    extra += f' · son gün {dstr(q["last_day"])}'
+            return (f'<div class="row"><div><b>{t}</b><div class="mut" style="font-size:.82rem">giriş {dstr(p.get("entry_date"))} · '
+                    f'son {THM._px(p.get("last_close"))}{extra}</div></div><div class="{cls(p.get("level", 1) - 1)}">{p.get("level", 1):.2f}×</div></div>')
+        rows = "".join(_pp(t, p) for t, p in sorted(pos.items(), key=lambda kv: -kv[1].get("level", 1)))
+        st.markdown(f'<div class="card"><div class="lbl">Açık pozisyonlar (fiyatlar bugünkü fiyat cinsinden)</div>{rows}</div>', unsafe_allow_html=True)
+    if TH_.get("pending"):
+        st.markdown('<div class="card note">Açılışta alınacak: ' + ", ".join(o["ticker"] for o in TH_["pending"]) + "</div>", unsafe_allow_html=True)
+    cl_ = TH_.get("closed") or []
+    if cl_:
+        WHY = {"hedef": "🎯 hedef", "iz": "🔒 zirveden geri", "süre": "⏰ süre", "stop": "stop", "veri_yok": "veri yok"}
+        rows = "".join(f'<div class="row"><div><b>{c["ticker"]}</b><div class="mut" style="font-size:.82rem">{WHY.get(c["reason"], c["reason"])} · '
+                       f'{dstr(c["entry_date"])} → {dstr(c["exit_date"])}</div></div><div class="{cls(c["ret_pct"])}">{pct(c["ret_pct"], True)}</div></div>'
+                       for c in reversed(cl_[-30:]))
+        st.markdown(f'<div class="card"><div class="lbl">Kapanan işlemler</div>{rows}</div>', unsafe_allow_html=True)
+    lv_ = TH_.get("live") or {}
+    if lv_.get("resolved_months"):
+        st.markdown(f'<div class="card note">Canlı, yanlılıksız kayıt ({lv_["resolved_months"]} ay): seçilenlerin %{lv_["top"]["target_hit_pct"]}\'i hedefe ulaştı, '
+                    f'tüm uygun hisselerde bu oran %{lv_["universe"]["target_hit_pct"]}.</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="card note mut">Canlı kayıt: {lv_.get("months", 0)} ay. Her ay tüm uygun hisseler (sonradan borsadan çıkanlar dahil) '
+                    'kaydediliyor; 12 ay sonra gerçek isabet oranı burada görünür.</div>', unsafe_allow_html=True)
