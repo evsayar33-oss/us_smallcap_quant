@@ -215,7 +215,6 @@ def evaluate(state: Dict, snaps: pd.DataFrame, nav_df: Optional[pd.DataFrame], r
         checks.append(_chk("live", "Canlı sonuç vs test", st,
                            f"{str(lv['months']).replace('.', ',')} aylık {what}, testteki aynı süreli dönemlerin %{p:.0f}'inden iyi"
                            + (" (normal aralıkta)" if p >= 15 else " (testin alt ucunda)" if p >= 5 else " (testte neredeyse hiç görülmeyen kadar kötü)"), p))
-    checks.append(th_check(state, report))
     overall = max((c["status"] for c in checks), key=lambda s: _ORDER[s])
     live_lots = ((state.get("performance") or {}).get("lots") or {})
     bt_lots = (report or {}).get("closed_lots") or {}
@@ -228,29 +227,3 @@ def evaluate(state: Dict, snaps: pd.DataFrame, nav_df: Optional[pd.DataFrame], r
 
 def emoji(status: str) -> str:
     return {GREEN: "🟢", YELLOW: "🟡", RED: "🔴"}.get(status, "⚪")
-
-
-def th_check(state: Dict, report: Optional[Dict]) -> Dict:
-    """V3.11 Hedef Avcısı: the sleeve must keep beating random picks under the same exit rules
-    (monthly backtest) and, once 12+ months of its own survivorship-free log exist, live."""
-    thb = (report or {}).get("target_hunter") or {}
-    live = ((state.get("target_hunter") or {}).get("live") or {})
-    if thb.get("status") != "OK":
-        return _chk("th", "Hedef avcısı", YELLOW, "testi henüz yok (Walk Forward Backtest çalışınca ölçülür)", None)
-    edge = float(thb.get("edge_vs_random_pp") or 0.0)
-    st = GREEN if edge >= 3 else (YELLOW if edge >= 0 else RED)
-    msg = (f"test: yıllık %{thb.get('cagr_pct')} vs rastgele %{thb.get('random_cagr_pct')} · "
-           f"zararla kapanan %{thb.get('loss_rate_pct')} (rastgele %{thb.get('random_loss_rate_pct')})")
-    if live.get("resolved_months"):
-        top, uni = live["top"], live["universe"]
-        msg += f" · canlı {live['resolved_months']} ay: hedef %{top['target_hit_pct']} (evren %{uni['target_hit_pct']})"
-        if top["target_hit_pct"] < uni["target_hit_pct"] and live["resolved_months"] >= 12:
-            st = YELLOW if st == GREEN else st
-    th = state.get("target_hunter") or {}
-    if th.get("paused"):
-        st = RED
-        msg = "YENİ ALIMLAR DURDURULDU: " + "; ".join(th.get("pause_reasons") or []) + " · " + msg
-    lt = th.get("live_trades") or {}
-    if lt.get("n"):
-        msg += f" · canlı {lt['n']} işlem, zararla %{lt.get('loss_rate_pct')}"
-    return _chk("th", "Hedef avcısı", st, msg.replace(".", ","), edge)

@@ -46,7 +46,6 @@ from learner_engine import daily_rank_ic, live_composite_ic, newey_west, run_lea
 from meta_engine import GOLD_TICKER, plan_tranche, score_universe  # noqa: E402
 import confidence as CF  # noqa: E402
 import health as HL  # noqa: E402
-import target_hunter as TH  # noqa: E402
 from state_manager import read_json  # noqa: E402
 from portfolio import apply_day, new_portfolio, weights as pf_weights  # noqa: E402
 from state_manager import (append_rows, load_monthly_snapshots, load_nav, load_research_prior,  # noqa: E402
@@ -199,20 +198,6 @@ def monthly_review(state, research, snap, today, index_close, cpi, cpi_stats, gu
     frame, info = score_universe(price_f, fund, state, cpi_stats, state.get("sector_map"))
     if frame.empty:
         return {"status": "NO_FACTORS", **info}, []
-    try:                                                   # V3.11 Hedef Avcısı (separate target sleeve)
-        th_pos = sorted(TH._st(state)["positions"])
-        if th_pos:
-            e0 = min(pd.Timestamp(p["entry_date"]) for p in TH._st(state)["positions"].values())
-            TH.resync(state, hist_fn(th_pos, str((e0 - pd.Timedelta(days=5)).date())), today)
-        cand = price_f[[c for c in ("ticker", "med_value_traded", "close_adj") if c in price_f]].merge(fund, on="ticker", how="inner")
-        rep_ = read_json(C.BACKTEST_REPORT_FILE) or {}
-        thb = rep_.get("target_hunter") if isinstance(rep_.get("target_hunter"), dict) else None
-        if thb is not None:
-            thb = {**thb, "generated_at": rep_.get("generated_at")}
-        state["_th_monthly"] = TH.monthly(state, cand, today, liq_floor=float(state.get("liq_floor_tl") or C.MIN_MEDIAN_VALUE_TRADED_TL),
-                                          report_th=thb)
-    except Exception as exc:
-        print(f"⚠️ Hedef avcısı aylık adımı atlandı: {exc}")
     chg = None if intraday else snap.set_index("ticker")["change_pct"]
     state.pop("active_strategy", None)
     conf_prior = (research or {}).get(C.CONFIDENCE_FILE_KEY) if isinstance(research, dict) else None
@@ -344,7 +329,7 @@ def run(force: bool = False, today=None, fetch=MD.fetch_snapshot, hist_fn=MD.dow
         bm = BM.assemble(rser["fx"], None, rser["idx"]) if rser is not None else None
     state["hurdles"] = BM.expected_hurdles(bm, cpi_stats, cash_y if len(crate) else None, as_of=as_of or today)
     bench = {"bm": bm, "crate": crate}
-    events, lots, th_events = [], [], []
+    events, lots = [], []
     wts = pf_weights(pf)
     nav_df = load_nav()
     if not refresh:
@@ -353,11 +338,6 @@ def run(force: bool = False, today=None, fetch=MD.fetch_snapshot, hist_fn=MD.dow
         if gbar is not None:
             bars = pd.concat([bars, gbar])
         events, lots = apply_day(pf, bars, today, cash_yield_pct=cash_y)
-        try:
-            th_events = TH.daily(state, snap, today, refresh=False, index_close=index_close)
-        except Exception as exc:
-            th_events = []
-            print(f"⚠️ Hedef avcısı günlük adımı atlandı: {exc}")
         if lots:
             append_rows(C.TRADE_LOG_FILE, lots)
         xu = float(index_close.iloc[-1]) if index_close is not None and len(index_close) else np.nan
@@ -409,16 +389,8 @@ def run(force: bool = False, today=None, fetch=MD.fetch_snapshot, hist_fn=MD.dow
         send_telegram(TG.events_report(today, events, state, day_ret))
     else:
         send_telegram(TG.status_report(today, state, refresh))
-    th_msg = None
-    try:
-        th_msg = TH.telegram(state, th_events, state.pop("_th_monthly", None), as_of or today)
-        save_state(state)
-    except Exception as exc:
-        print(f"⚠️ Hedef avcısı mesajı hazırlanamadı: {exc}")
-    if th_msg:
-        send_telegram(th_msg)
     print(f"✅ {today.date()} [{'YENİLEME' if refresh else 'EOD'}] | NAV {pf['nav']:.4f} | pozisyon {len(pf['positions'])} | aylık={'evet' if review else 'hayır'}")
-    return {"status": "OK", "state": state, "events": events, "review": review, "th_events": th_events}
+    return {"status": "OK", "state": state, "events": events, "review": review}
 
 
 def main():

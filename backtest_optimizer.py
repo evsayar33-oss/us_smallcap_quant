@@ -33,7 +33,6 @@ from factors import build_frame, composite, price_factors_at, wide_from_history
 from labels import forward_labels, month_start_sessions
 from learner_engine import daily_rank_ic, factor_corr, fit_weights, get_prior, newey_west
 import confidence as CF
-import target_hunter as TH
 from meta_engine import plan_tranche, score_universe
 from portfolio import apply_day, new_portfolio, weights as pf_weights
 from state_manager import atomic_json_write, load_state
@@ -159,17 +158,6 @@ def run(start: str = "2010-01-01", end: Optional[str] = None, save: bool = True,
     if pit is not None and not pit.empty and "paid_in" in pit:
         lp = pit.dropna(subset=["paid_in"]).sort_values("period_end").groupby("ticker")["paid_in"].last()
         latest_paid = lp.to_dict()
-    if data is not None and len(data) and pit is not None and not pit.empty:
-        # V3.11: SEC share counts are missing for many names; fill from today's TradingView share count
-        # (market cap = adjusted price x shares: neutral to splits, ignores later dilution/buybacks)
-        try:
-            snap_, _ = MD.fetch_snapshot({})
-            sh = pd.to_numeric(snap_.set_index("ticker").get("shares"), errors="coerce").dropna()
-            add = {t: float(v) for t, v in sh.items() if t in data and t not in latest_paid and v > 0}
-            latest_paid.update(add)
-            print(f"ℹ️ Hisse adedi: SEC {len(latest_paid) - len(add)}, TradingView ile tamamlanan {len(add)}")
-        except Exception as exc:
-            print(f"⚠️ Hisse adedi tamamlanamadı: {exc}")
 
     wide = wide_from_history(data)
     idx = wide["close"].index
@@ -268,31 +256,6 @@ def run(start: str = "2010-01-01", end: Optional[str] = None, save: bool = True,
     lots_df = enrich_lots(pd.DataFrame(lots_all), cpi, index_close, bench)
     open_now = {t: round((p["level"] - 1) * 100, 2) for t, p in pf["positions"].items()}
 
-    # ---------------- V3.11 Hedef Avcısı: same rules as live, with a random-pick control
-    th_rep = {"status": "SKIPPED"}
-    try:
-        th_c = {}
-        for d in dates:
-            pf_, fi, _cs = inputs[d]
-            if fi is None or fi.empty:
-                continue
-            th_c[d] = pf_[[c for c in ("ticker", "med_value_traded", "close_adj") if c in pf_]].merge(fi, on="ticker", how="inner")
-        th_rep = TH.backtest_suite(wide["open"], wide["close"], th_c, liq_floor_fn=lambda d: liq_floor_at(cpi, d),
-                                   champion=(state.get("target_hunter") or {}).get("active"))
-        bc = th_rep.get("best_challenger")
-        if bc:
-            print(f"🔬 Hedef avcısı aday kural: {bc['label']} (yıllık %{bc['cagr_pct']}, iki yarı {bc['halves_cagr_pct']})")
-        if th_rep.get("status") == "OK":
-            print(f"🏹 Hedef avcısı: yıllık %{th_rep['cagr_pct']} (rastgele %{th_rep['random_cagr_pct']}), "
-                  f"zararla kapanan %{th_rep.get('loss_rate_pct')}, hedefe ulaşan %{th_rep.get('target_hit_pct')}")
-            if save:
-                th_rep["_trades"].to_csv(C.TH_BACKTEST_TRADES_FILE, index=False)
-                th_rep["_nav"].rename("nav").to_csv(C.TH_BACKTEST_NAV_FILE, float_format="%.6g")
-    except Exception as exc:
-        th_rep = {"status": f"ERROR: {str(exc)[:160]}"}
-        print(f"⚠️ Hedef avcısı testi yapılamadı: {exc}")
-    th_rep = {k: v for k, v in th_rep.items() if not str(k).startswith("_")}
-
     # ---------------- calibrated confidence model (walk-forward on OUT-OF-SAMPLE scores, investable names)
     conf_model = dict(CF.DEFAULT_MODEL)
     try:
@@ -361,7 +324,6 @@ def run(start: str = "2010-01-01", end: Optional[str] = None, save: bool = True,
         "open_positions_end": open_now,
         "oos_composite_ic_12m": {"mean": round(float(m), 4), "t_nw": round(float(t), 2), "n_months": int(n)},
         "per_year": per_year,
-        "target_hunter": th_rep,
         "folds": folds,
         "factor_ic_full_sample_12m": prior.get("ic_mean"),
         "factor_t_full_sample_12m": prior.get("ic_t_nw"),
