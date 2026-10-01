@@ -1,0 +1,32 @@
+name: S&P 500 araştırma verisi dışa aktar (tek seferlik)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: pip install pandas numpy scipy requests yfinance lxml html5lib
+      - name: Export
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python sp_export.py
+      - name: Push to sp-data branch (main is not touched)
+        run: |
+          git config --local user.email "quantbot@users.noreply.github.com"
+          git config --local user.name "QuantBot AI"
+          git checkout --orphan sp-data
+          git rm -r -q -f --cached .
+          git add -f sp_out/
+          git commit -q -m "S&P 500 araştırma verisi"
+          git push -f origin sp-data
