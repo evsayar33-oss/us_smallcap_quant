@@ -84,7 +84,12 @@ def monthly_report(today, state: Dict, rev: Dict, buys: List[Dict]) -> str:
         L.append("🔴 <b>SAT</b>")
         for t, why in rev.get("sell_reasons", {}).items():
             L.append(f"<b>{escape(str(t))}</b>  {REASON_TR.get(why, why)}")
-    keep = [t for t in rev.get("holds", []) if t not in picks]
+    ext = rev.get("extended") or []
+    if ext:
+        L.append("")
+        L.append("⏳ <b>Süresi uzatıldı</b>  " + " · ".join(escape(str(t)) for t in ext)
+                 + "  <i>(zararda ama puanı hâlâ yüksek: zararı realize etmek yerine tutuluyor, en fazla 18 ay daha)</i>")
+    keep = [t for t in rev.get("holds", []) if t not in picks and t not in ext]
     if keep:
         L.append("")
         L.append("⚪ <b>TUT</b>  " + " · ".join(escape(str(t)) for t in keep))
@@ -92,7 +97,7 @@ def monthly_report(today, state: Dict, rev: Dict, buys: List[Dict]) -> str:
     if exp:
         L.append("")
         L.append("⏳ <b>Gelecek ay 6 ayı doluyor</b>  " + " · ".join(escape(str(t)) for t in exp)
-                 + "  <i>(o ay yeniden seçilmezse satılacak)</i>")
+                 + "  <i>(o ay yeniden seçilmezse satılacak; zarardaysa ve puanı yüksekse tutulmaya devam eder)</i>")
     L.append("")
     L += portfolio_line(state)
     L.append("ℹ️ <i>Güven: 12 ayda tipik bir ABD küçük hissesinden çok kazanma olasılığı (%50 = yazı-tura). "

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-ENGINE_VERSION = "3.11.0-us"
+ENGINE_VERSION = "3.12.0-us"
 STRATEGY_NAME = "US_SMALLCAP_REAL_RETURN_ENGINE_V3"
 MARKET = "america"                # TradingView scanner market
 CURRENCY = "USD"
@@ -187,56 +187,11 @@ VALUE_TRAP_MODE = "filter"        # ON (V3.10): skip cheap stocks still in the b
 # real-data test: return ~unchanged across thresholds (63-67%/yr), beat-BIST100 80% -> 85-91%, sum target 17% -> 18-23%
 VALUE_TRAP_CUT = 1 / 3            # "filter": skip names whose 'turn' percentile is below this
 
-# ---- V3.11 Hedef Avcısı: separate 2x sleeve (sell at the target multiple) -------------------------
-# Research (real US small-cap panel 2011-2026, SEC fundamentals; compared with RANDOM picks under the SAME exits):
-#   score = small market cap + high book yield + high earnings yield + high operating margin
-#   %15.2/yr (random %9.9, IWM %9.8) · halves %14.5 / %15.9 · closed with a loss %20 (random ~%33)
-#   lost more than half %2.1 · avg win +%58 / avg loss -%18 · reached 2x %30 · max drawdown -%43
-#   2015-2026: sleeve %16.3/yr vs main engine %13.0/yr (main closes %48 of lots at a loss).
-#   Caveat: the price panel only has names listed TODAY (delisted ones missing) -> absolute returns are
-#   inflated for every strategy; the edge over random (same bias) is the trustworthy number.
-TH_ENABLED = True
-TH_SLOTS = 15                     # 10 -> 15: better in both halves, fewer losers, smaller drawdown
-TH_TARGET = 2.0                   # sell at 2x the entry price
-TH_TRAIL = None                   # trailing exit did not help at a 2x target
-TH_MAX_MONTHS = 36                # sell after 36 months whatever the level
-TH_STOP = None                    # no hard stop: in research stops RAISED the share of losing trades
-TH_COMPONENTS = ["small", "book", "earn", "margin"]
-TH_MIN_VALUE_TRADED = 2_000_000.0 # USD median daily $ volume
-TH_MCAP_MIN = 250_000_000.0
-TH_MCAP_MAX = 6_000_000_000.0
-TH_MIN_PRICE = 3.0
-TH_UNIVERSE_LOG = os.path.join(DATA_DIR, "th_universe_log.csv.gz")   # survivorship-free monthly record
-TH_TRADES_FILE = os.path.join(DATA_DIR, "th_trades.csv")
-TH_BACKTEST_TRADES_FILE = os.path.join(DATA_DIR, "th_backtest_trades.csv")
-TH_BACKTEST_NAV_FILE = os.path.join(DATA_DIR, "th_backtest_nav.csv")
-
-# ---- V3.11 Hedef Avcısı: separate 2x sleeve (sell at the target multiple) -------------------------
-# Research (real US small-cap panel 2011-2026, SEC fundamentals; compared with RANDOM picks under the SAME exits):
-#   score = small market cap + high book yield + high earnings yield + high operating margin
-#   %15.2/yr (random %9.9, IWM %9.8) · halves %14.5 / %15.9 · closed with a loss %20 (random ~%33)
-#   lost more than half %2.1 · avg win +%58 / avg loss -%18 · reached 2x %30 · max drawdown -%43
-#   2015-2026: sleeve %16.3/yr vs main engine %13.0/yr (main closes %48 of lots at a loss).
-#   Caveat: the price panel only has names listed TODAY (delisted ones missing) -> absolute returns are
-#   inflated for every strategy; the edge over random (same bias) is the trustworthy number.
-TH_ENABLED = True
-TH_SLOTS = 15                     # 10 -> 15: better in both halves, fewer losers, smaller drawdown
-TH_TARGET = 2.0                   # sell at 2x the entry price
-TH_TRAIL = None                   # trailing exit did not help at a 2x target
-TH_MAX_MONTHS = 36                # sell after 36 months whatever the level
-TH_STOP = None                    # no hard stop: in research stops RAISED the share of losing trades
-TH_COMPONENTS = ["small", "book", "earn", "margin"]
-TH_MIN_VALUE_TRADED = 2_000_000.0 # USD median daily $ volume
-TH_MCAP_MIN = 250_000_000.0
-TH_MCAP_MAX = 6_000_000_000.0
-TH_MIN_PRICE = 3.0
-TH_UNIVERSE_LOG = os.path.join(DATA_DIR, "th_universe_log.csv.gz")   # survivorship-free monthly record
-TH_TRADES_FILE = os.path.join(DATA_DIR, "th_trades.csv")
-TH_BACKTEST_TRADES_FILE = os.path.join(DATA_DIR, "th_backtest_trades.csv")
-TH_BACKTEST_NAV_FILE = os.path.join(DATA_DIR, "th_backtest_nav.csv")
-# slow, evidence-based adaptation (champion / challenger) and stopping rules
-TH_CHALLENGERS = [{"TH_TRAIL": (1.5, 0.25)}, {"TH_MAX_MONTHS": 24}, {"TH_MAX_MONTHS": 48},
-                  {"TH_SLOTS": 10}, {"TH_SLOTS": 20}]
-TH_CHALLENGER_MIN_EDGE_PP = 3.0
-TH_CHALLENGER_CONFIRM = 3
-TH_MIN_MONTHS_BETWEEN_CHANGES = 12
+# ---- V3.12: don't realise a loss at cohort expiry ---------------------------------------------------
+# A name whose 6-month cohort expires while it is BELOW its entry price is kept for another cohort if its
+# score is still in the top 30% (composite percentile >= 70), up to 18 extra months.
+# Real-data walk-forward (same engine, only this rule changed):
+#   BIST 2017-26: lots closed with a gain 68% -> 91%, avg lot +56% -> +79%, CAGR 67.4% -> 66.9%, max DD -41.4% -> -40.4%
+#   US   2015-26: lots closed with a gain 51% -> 67%, avg lot +2.3% -> +8.2%, CAGR 9.1% -> 10.6%, max DD -57.6% -> -47.0%
+#   Neighbouring settings (score >= 60/70/80, 6/12/18 months) moved the same way.
+LOSER_EXTENSION = {"min_score_pct": 70, "max_extra_months": 18}

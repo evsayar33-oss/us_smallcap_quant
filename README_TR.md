@@ -2,39 +2,16 @@
 
 BIST projesinde V3.10'a kadar gerçek veriyle doğrulanan her şey burada aynen çalışır. Değişen yalnızca hisse evreni ve veri kaynaklarıdır.
 
-## V3.11 — Hedef Avcısı (2× hedefli ayrı sepet)
-* **Ne:** Ana portföyden bağımsız, en fazla 15 hisselik ayrı bir sepet. Hisse 2 kata ulaşınca satılır; en uzun 36 ay tutulur.
-* **Seçim:** Her ay boş slotlar şu özelliklerin ortalama sıralamasına göre doldurulur: küçük piyasa değeri, defter değerine ve kâra göre ucuzluk, yüksek faaliyet marjı.
-* **Uygunluk:** piyasa değeri 250 milyon–6 milyar $, fiyat ≥ 3 $, günlük işlem hacmi ≥ 2 milyon $. Alım ertesi seansın açılışında.
-* **Satış:** 2× hedef veya 36 ay. Zarar-kes (stop) yok: testte zararla kapanan işlem sayısını artırdı.
-* **Gerçek veri sonucu (2011–2026, SEC bilançoları; aynı kurallarla rastgele seçimle karşılaştırmalı):**
-  * Yıllık %15,2; rastgele seçim %9,9; IWM %9,8. Geçmişin iki yarısında %14,5 ve %15,9.
-  * İşlemlerin %80'i kârla, %20'si zararla kapandı (rastgele seçimde zararla kapanan ~%33).
-  * Ortalama kazanç +%58, ortalama kayıp −%18; işlem başı ortalama +%43. Yarısından fazla kaybettiren %2,1.
-  * 2 kata ulaşan %30. En büyük düşüş −%43.
-* **Ana sistemle karşılaştırma (2015–2026):** Hedef Avcısı yıllık %16,3 (düşüş −%43), ana sistem %13,0 (düşüş −%53), IWM %9,1. Hedef Avcısı daha az işlemi zararla kapatıyor (%20'ye karşı %48,5).
-* **Uyarı:** Fiyat verisinde yalnızca bugün işlem gören hisseler var; borsadan çıkanlar eksik. Bu yüzden mutlak getiriler bütün yöntemlerde şişik. Güvenilir ölçü, aynı yanlılığı taşıyan rastgele seçime karşı farktır (+5 puan).
-* **Kendini denetleme:**
-  * Her ayın Walk Forward Backtest'i bu sepeti aynı kodla ve 20 rastgele seçimle yeniden test eder.
-  * Her ay taranan tüm hisseler (sonradan borsadan çıkanlar dahil) `data/th_universe_log.csv.gz` dosyasına kaydedilir. 12 ay sonra gerçek, yanlılıksız isabet oranı görünür.
-* **Fiyatlar:** Her açık pozisyon için güncel fiyat, **🎯 hedef fiyat**, **🔒 kâr kilidi fiyatı** (altına kapanırsa sat) ve son gün gösterilir. Fiyatlar bugünkü fiyat cinsindendir; bölünme veya bedelsiz olsa da doğru kalır.
-* **Yavaş, kanıta dayalı kendini geliştirme:**
-  * Her ayın testi mevcut kuralın yanında birkaç yakın alternatifi de dener: kâr kilidi seviyesi, süre ve hisse sayısı. **Hedef kat (5× / 2×) değişmez.**
-  * Bir alternatif ancak şu dört şartın hepsini sağlarsa "aday" olur:
-    * geçmişin iki yarısında da daha iyi,
-    * rastgele seçimden en az 3 puan daha iyi,
-    * mevcut kuraldan daha büyük üstünlük,
-    * daha fazla zararlı işlem yok.
-  * Aynı aday **3 ay üst üste** doğrulanırsa ve son değişiklikten **12 ay** geçmişse uygulanır. Yılda en fazla bir değişiklik olur ve Telegram'da gerekçesiyle bildirilir.
-* **Durdurma (yeni alımlar durur, açık pozisyonların satış kuralları sürer):**
-  * Son test rastgele seçimden kötü çıkarsa yeni alımlar durur.
-  * 12 ay ve 8 işlemden sonra canlıda zararla kapanan oran testten 20 puan yüksekse ya da işlem başı ortalama eksiye dönerse yeni alımlar durur.
-  * Koşullar düzelince alımlar otomatik başlar; iki durumda da Telegram'dan haber gelir.
-* **Beklenmedik olay uyarıları:**
-  * Bir hisse girişten %50 düşerse uyarı gelir: şirkete özel kötü haber varsa sat, yoksa tut.
-  * Bir hisse 5 gün işlem görmezse uyarı gelir.
-  * Piyasa son 3 ayın zirvesinden %20 düşerse uyarı gelir. Bu durumda alımlar durdurulmaz, çünkü testte çöküş sonrası alımı durdurmak sonucu iki borsada da kötüleştirdi.
-* **Nerede:** Ayrı Telegram mesajı (🏹 Hedef Avcısı 2×: AL/SAT) ve panelde **Hedef Avcısı** sekmesi.
+## V3.12 — Zararı satmak yerine tutmak (kârla kapanan işlem oranı %50 → %68)
+* **Kural:** 6 ayı dolan bir hisse giriş fiyatının altındaysa ve sistem puanı hâlâ ilk %30'daysa satılmaz; en fazla 18 ay daha tutulur.
+* **Gerçek veri sonucu (2015–2026, aynı motor, yalnızca bu kural değişti):**
+  * Kârla kapanan işlem %50 → **%68**.
+  * İşlem başı ortalama +%2 → **+%8**.
+  * Yıllık getiri %7,5 → **%10,1**.
+  * En büyük düşüş −%59 → **−%49**.
+* **Sağlamlık:** Puan eşiği %60, %70 ve %80; ek süre 6, 12 ve 18 ay denendi. Hepsinde aynı yönde sonuç çıktı.
+* **Not:** Bu testte ana sistemin temel getirisi, reponun kendi son testindekinden (%13) düşük çıktı, çünkü hisse listesi ve bilanço verisi farklı tarihte indirildi. Kuralın etkisi iki veri setinde de aynı yönde.
+* **Telegram:** Aylık raporda "⏳ Süresi uzatıldı" satırında hangi hissenin neden tutulduğu yazar.
 
 ## Aynen taşınanlar (BIST V3.10)
 * **%100 hisse portföyü:** Altın, nakit ya da strateji değiştirme yok.

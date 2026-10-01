@@ -363,6 +363,18 @@ def plan_tranche(pf: Dict, frame: pd.DataFrame, state: Dict, today, today_change
             p0 = pf["positions"].get(t)
             if p0 and t in f.index and p0.get("level", 1) >= 1.5 and float(f.at[t, "composite_pct"]) >= 80 and t not in picks:
                 picks.append(t)                                    # extend a strong winner into the new cohort
+    le = getattr(C, "LOSER_EXTENSION", None)          # V3.12: don't realise a loss at cohort expiry
+    extended = []
+    if le:
+        for t in sorted(expired):
+            p0 = pf["positions"].get(t)
+            if not p0 or t in picks or t not in f.index or p0.get("level", 1) >= 1.0:
+                continue
+            age = (pd.Period(month, "M") - pd.Period(str(p0.get("entry_date", month))[:7], "M")).n
+            if age < C.TRANCHE_MONTHS + int(le.get("max_extra_months", 6)) and \
+                    float(f.at[t, "composite_pct"]) >= float(le.get("min_score_pct", 0)):
+                picks.append(t)                                    # keep the loser one more cohort
+                extended.append(t)
     conf = {t: round(float(f.at[t, "confidence"]), 4) for t in picks}
     wm = getattr(C, "TRANCHE_WEIGHTING", "equal")
     if picks and wm in ("lottery", "lottery_vol"):
@@ -472,7 +484,8 @@ def plan_tranche(pf: Dict, frame: pd.DataFrame, state: Dict, today, today_change
                   for t in tw}
     nxt = (pd.Period(month, "M") + 1).strftime("%Y-%m")
     expiring_next = sorted(t for t, m in exit_month.items() if m == nxt)
-    summary = {"engine": "tranche", "month": month, "expiring_next": expiring_next, "picks": picks, "confidence": conf,
+    summary = {"engine": "tranche", "month": month, "expiring_next": expiring_next, "extended": extended,
+               "picks": [t for t in picks if t not in extended], "confidence": conf,
                "confidence_grade": {t: grade(conf[t]) for t in picks}, "suggested_split": split,
                "buys": buys, "sells": list(sells), "sell_reasons": sells, "holds": holds,
                "target_weights": {k: round(v, 4) for k, v in tw.items()}, "exit_month": exit_month,

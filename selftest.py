@@ -324,75 +324,6 @@ def _sum_hurdle_ok() -> bool:
             and e["mode"] == "sum")
 
 
-def _th_ok() -> bool:
-    """V3.11 Hedef Avcısı unit checks: exit rules, daily chaining, slot simulation, scoring direction."""
-    import target_hunter as TH
-    T = C.TH_TARGET
-    d0 = pd.Timestamp("2024-01-02")
-    ok = TH.exit_reason(T + 0.01, T + 0.01, d0, d0) == "hedef"
-    if C.TH_TRAIL:
-        a, b = C.TH_TRAIL
-        ok &= TH.exit_reason(a * 1.5 * (1 - b) - 0.01, a * 1.5, d0, d0) == "iz"
-        ok &= TH.exit_reason(a * 1.5 * (1 - b) + 0.05, a * 1.5, d0, d0) is None
-    ok &= TH.exit_reason(0.4, 1.0, d0, d0) == (None if C.TH_STOP is None else "stop")
-    ok &= TH.exit_reason(1.1, 1.2, d0, d0 + pd.DateOffset(months=int(C.TH_MAX_MONTHS))) == "süre"
-    st = {"target_hunter": {"positions": {}, "pending": [{"ticker": "AAA", "date": "2024-01-01"}], "closed": []}}
-    s1 = pd.DataFrame({"ticker": ["AAA"], "open": [10.0], "close": [11.0], "change_pct": [10.0]})
-    ev = TH.daily(st, s1, "2024-01-02")
-    ok &= any(e["type"] == "AL" for e in ev) and abs(st["target_hunter"]["positions"]["AAA"]["level"] - 1.1) < 1e-9
-    s2 = pd.DataFrame({"ticker": ["AAA"], "open": [11.0], "close": [11.0 * T], "change_pct": [(T - 1) * 100.0]})
-    ev = TH.daily(st, s2, "2024-01-03")
-    ok &= any(e["type"] == "SAT" and e["reason"] == "hedef" for e in ev) and not st["target_hunter"]["positions"]
-    idx = pd.bdate_range("2020-01-01", periods=400)
-    cl = pd.DataFrame({"UP": np.linspace(1, T + 1, 400), "FLAT": np.ones(400)}, index=idx)
-    nav, tr = TH.simulate(cl, cl, {idx[0]: ["UP", "FLAT"]})
-    ok &= bool((tr["reason"] == "hedef").any()) and nav.iloc[-1] > 1.0
-    df = pd.DataFrame({"ticker": ["S", "B"], "market_cap": [3e8, 5e9], "pb": [0.5, 5.0], "pe": [4.0, 40.0], "op_margin": [20, 5],
-                       "med_value_traded": [1e12, 1e12], "close": [10.0, 10.0], "close_adj": [10.0, 10.0]})
-    ok &= TH.ranked(df, 0)["ticker"].iloc[0] == "S"
-    # prices in today's terms (split-proof): last 20, level 2 -> entry-equivalent 10
-    q = TH.prices({"last_close": 20.0, "level": 2.0, "peak": 2.5, "entry_date": "2024-01-02"})
-    ok &= abs(q["target"] - 10 * T) < 1e-9
-    if C.TH_TRAIL:
-        a, b = C.TH_TRAIL
-        ok &= ("lock" in q and abs(q["lock"] - 10 * 2.5 * (1 - b)) < 1e-9) if 2.5 >= a else ("lock_trigger" in q)
-    # guard: live clearly worse than the test after 12 months -> stop new buys; negative test edge -> stop
-    today = pd.Timestamp("2026-06-01")
-    g_st = {"target_hunter": {"positions": {}, "pending": [], "closed": [
-        {"ret_pct": -20.0, "entry_date": "2025-01-02"} for _ in range(8)]}}
-    ok &= TH.guard(g_st, {"status": "OK", "edge_vs_random_pp": 10, "loss_rate_pct": 20}, today)["paused"]
-    g2 = {"target_hunter": {"positions": {}, "pending": [], "closed": []}}
-    ok &= TH.guard(g2, {"status": "OK", "edge_vs_random_pp": -1, "loss_rate_pct": 20}, today)["paused"]
-    ok &= not TH.guard(g2, {"status": "OK", "edge_vs_random_pp": 5, "loss_rate_pct": 20}, today)["paused"]
-    # challenger: adopted only after 3 consecutive NEW confirmations and 12 months since install
-    a_st = {"target_hunter": {"positions": {}, "pending": [], "closed": [], "installed": "2025-01-01"}}
-    best = {"change": {"TH_MAX_MONTHS": 30}, "label": "süre 30 ay", "cagr_pct": 1, "halves_cagr_pct": [1, 1],
-            "edge_vs_random_pp": 5, "loss_rate_pct": 10}
-    res = [TH.adopt_challenger(a_st, {"generated_at": f"g{i}", "best_challenger": best}, today) for i in (1, 1, 2, 3)]
-    ok &= res[0] is None and res[1] is None and res[2] is None and res[3] is not None
-    ok &= a_st["target_hunter"]["active"].get("TH_MAX_MONTHS") == 30 and TH._cfg("TH_MAX_MONTHS", 0) == 30
-    ok &= TH.adopt_challenger(a_st, {"generated_at": "g4", "best_challenger": {**best, "change": {"TH_SLOTS": 3}}}, today) is None
-    TH.set_active({})
-    # champion/challenger backtest on a small synthetic market
-    rng = np.random.default_rng(3)
-    idx2 = pd.bdate_range("2018-01-01", periods=900)
-    names = [f"T{i}" for i in range(40)]
-    px_ = pd.DataFrame(np.exp(np.cumsum(rng.normal(0.0004, 0.02, (900, 40)), axis=0)) * 10, index=idx2, columns=names)
-    cands = {}
-    for d in idx2[::21][:-2]:
-        cands[d] = pd.DataFrame({"ticker": names, "market_cap": px_.loc[d].to_numpy() * 1e8 + 3e8,
-                                 "pb": rng.uniform(0.5, 3, 40), "pe": rng.uniform(3, 30, 40), "op_margin": rng.uniform(1, 30, 40),
-                                 "med_value_traded": 1e12, "close": px_.loc[d].to_numpy() + 5, "close_adj": px_.loc[d].to_numpy() + 5})
-    su = TH.backtest_suite(px_, px_, cands, None, champion={}, challengers=[{"TH_SLOTS": 5}], n_random=2, n_random_ch=2)
-    ok &= su.get("status") == "OK" and len(su.get("challengers", [])) == 1 and len(su["halves"]["cagr_pct"]) == 2
-    msg = TH.telegram({"target_hunter": {"positions": {"AAA": {"entry_date": "2026-01-02", "level": 1.5, "peak": 2.2, "last_close": 15.0}},
-                                         "pending": [], "closed": []}},
-                      [{"type": "UYARI", "ticker": "AAA", "kind": "düşüş50", "level": 0.45}], None, today)
-    ok &= msg is not None and "hedef" in msg
-    TH.set_active({})
-    return bool(ok)
-
-
 def run_self_test() -> bool:
     import main as M
     import autonomy_guard as AG
@@ -463,12 +394,10 @@ def run_self_test() -> bool:
                          and len((st.get("health") or {}).get("checks", [])) >= 10,
         "backtest_nav_saved": os.path.exists(C.BACKTEST_NAV_FILE),
         "liq_floor_scaled": _liq_ok(),
-        "cohorts_live": bool(st["portfolio"].get("cohorts")) and all(len(c["tickers"]) <= C.TRANCHE_N for c in st["portfolio"]["cohorts"])
+        "loser_extension_reported": "extended" in (st.get("last_rebalance") or {}),
+        "cohorts_live": bool(st["portfolio"].get("cohorts")) and all(len(c["tickers"]) <= 2 * C.TRANCHE_N for c in st["portfolio"]["cohorts"])
                         and len(st["portfolio"]["cohorts"]) <= C.TRANCHE_MONTHS,
         "stock_only_fully_invested": st["portfolio"]["cash"] / max(st["portfolio"]["nav"], 1e-9) < 0.08,
-        "th_unit": _th_ok(),
-        "th_live": bool((st.get("target_hunter") or {}).get("last_month")),
-        "th_backtest_key": "target_hunter" in rep,
         "picks_have_confidence": all(0 < x["confidence"] < 1 for x in (st.get("last_picks") or {}).get("picks", [{"confidence": 0}])),
         **{f"unit_{k}": bool(v) for k, v in u.items()},
         **{f"gate_{k}": v for k, v in gate.items()},
