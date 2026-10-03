@@ -10,11 +10,11 @@
     "cash": 0.0,
     "positions": {
       "CNXN": {
-        "value": 0.20586087817371956,
-        "cost_basis": 0.19980005000000003,
+        "value": 0.09992370168159183,
+        "cost_basis": 0.09718127473592254,
         "entry_date": "2026-09-30",
         "entry_px": 89.62,
-        "level": 1.0329167596518631,
+        "level": 1.0307966971658107,
         "peak": 1.0329167596518631,
         "missing": 0,
         "entry_pct": 99.08,
@@ -24,14 +24,14 @@
         "entry_p_beat_all": 0.362,
         "entry_conf": 0.5963,
         "stop_level": null,
-        "last_close": 92.57
+        "last_close": 92.38
       },
       "XMAX": {
-        "value": 0.19470108140832312,
-        "cost_basis": 0.1984077192455613,
+        "value": 0.10107473504667948,
+        "cost_basis": 0.10179989711798049,
         "entry_date": "2026-10-01",
         "entry_px": 8.63,
-        "level": 0.9837775202780996,
+        "level": 0.9953650057937428,
         "peak": 1.0,
         "missing": 0,
         "entry_pct": 99.35,
@@ -41,14 +41,14 @@
         "entry_p_beat_all": 0.346,
         "entry_conf": 0.5354,
         "stop_level": null,
-        "last_close": 8.49
+        "last_close": 8.59
       },
       "RSKD": {
-        "value": 0.19806250766325334,
-        "cost_basis": 0.19830851538593852,
+        "value": 0.09855084513151702,
+        "cost_basis": 0.09955202171352229,
         "entry_date": "2026-10-01",
         "entry_px": 7.92,
-        "level": 1.0012626262626263,
+        "level": 0.9924242424242427,
         "peak": 1.0012626262626263,
         "missing": 0,
         "entry_pct": 98.91,
@@ -58,15 +58,15 @@
         "entry_p_beat_all": 0.346,
         "entry_conf": 0.5,
         "stop_level": null,
-        "last_close": 7.93
+        "last_close": 7.86
       },
       "MTW": {
-        "value": 0.20409170345850317,
-        "cost_basis": 0.19820936112824555,
+        "value": 0.10249718954493088,
+        "cost_basis": 0.09602770980530569,
         "entry_date": "2026-10-01",
         "entry_px": 21.7,
-        "level": 1.032258064516129,
-        "peak": 1.032258064516129,
+        "level": 1.0700460829493086,
+        "peak": 1.0700460829493086,
         "missing": 0,
         "entry_pct": 98.62,
         "entry_exp_real": 8.5,
@@ -75,14 +75,14 @@
         "entry_p_beat_all": 0.346,
         "entry_conf": 0.5197,
         "stop_level": null,
-        "last_close": 22.4
+        "last_close": 23.22
       },
       "XRX": {
-        "value": 0.19334116163495857,
-        "cost_basis": 0.19567756409585063,
+        "value": 0.09565505533624899,
+        "cost_basis": 0.10065777869040457,
         "entry_date": "2026-10-01",
         "entry_px": 3.17,
-        "level": 0.9905362776025237,
+        "level": 0.9526813880126185,
         "peak": 1.0,
         "missing": 0,
         "entry_pct": 98.55,
@@ -92,96 +92,81 @@
         "entry_p_beat_all": 0.346,
         "entry_conf": 0.5034,
         "stop_level": null,
-        "last_close": 3.14
-      }
-    },
-    "pending": [
-      {
-        "ticker": "CNXN",
-        "action": "REBAL",
-        "reason": "COHORT_WEIGHT",
-        "target_w": 0.1
+        "last_close": 3.02
       },
-      {
-        "ticker": "XMAX",
-        "action": "REBAL",
-        "reason": "COHORT_WEIGHT",
-        "target_w": 0.1
-      },
-      {
-        "ticker": "RSKD",
-        "action": "REBAL",
-        "reason": "COHORT_WEIGHT",
-        "target_w": 0.1
-      },
-      {
-        "ticker": "MTW",
-        "action": "REBAL",
-        "reason": "COHORT_WEIGHT",
-        "target_w": 0.1
-      },
-      {
-        "ticker": "XRX",
-        "action": "REBAL",
-        "reason": "COHORT_WEIGHT",
-        "target_w": 0.1
-      },
-      {
-        "ticker": "UVSP",
-        "action": "BUY",
-        "reason": "NEW_ENTRY",
-        "target_w": 0.125,
-        "stop_pct": null,
+      "UVSP": {
+        "value": 0.12657400129617521,
+        "cost_basis": 0.12607179306417488,
+        "entry_date": "2026-10-02",
+        "entry_px": 41.54,
+        "level": 1.0064997592681753,
+        "peak": 1.0064997592681753,
+        "missing": 0,
         "entry_pct": 54.17,
-        "entry_conf": 0.5332,
         "entry_exp_real": 10.63,
         "entry_exp_nominal": 14.95,
         "entry_hurdle": 14.76,
-        "entry_p_beat_all": 0.347
+        "entry_p_beat_all": 0.347,
+        "entry_conf": 0.5332,
+        "stop_level": null,
+        "last_close": 41.81
       },
-      {
-        "ticker": "IBCP",
-        "action": "BUY",
-        "reason": "NEW_ENTRY",
-        "target_w": 0.125,
-        "stop_pct": null,
+      "IBCP": {
+        "value": 0.1264823992655171,
+        "cost_basis": 0.12603239562884233,
+        "entry_date": "2026-10-02",
+        "entry_px": 36.15,
+        "level": 1.006085753803596,
+        "peak": 1.006085753803596,
+        "missing": 0,
         "entry_pct": 41.67,
+        "entry_exp_real": 15.39,
+        "entry_exp_nominal": 19.9,
+        "entry_hurdle": 14.76,
+        "entry_p_beat_all": 0.344,
         "entry_conf": 0.5022,
-        "entry_exp_real": 15.39,
-        "entry_exp_nominal": 19.9,
-        "entry_hurdle": 14.76,
-        "entry_p_beat_all": 0.344
+        "stop_level": null,
+        "last_close": 36.37
       },
-      {
-        "ticker": "WLY",
-        "action": "BUY",
-        "reason": "NEW_ENTRY",
-        "target_w": 0.125,
-        "stop_pct": null,
+      "WLY": {
+        "value": 0.12188048854634344,
+        "cost_basis": 0.1259930105052083,
+        "entry_date": "2026-10-02",
+        "entry_px": 48.98,
+        "level": 0.9697835851367906,
+        "peak": 1.0,
+        "missing": 0,
         "entry_pct": 20.83,
+        "entry_exp_real": 15.39,
+        "entry_exp_nominal": 19.9,
+        "entry_hurdle": 14.76,
+        "entry_p_beat_all": 0.344,
         "entry_conf": 0.4695,
-        "entry_exp_real": 15.39,
-        "entry_exp_nominal": 19.9,
-        "entry_hurdle": 14.76,
-        "entry_p_beat_all": 0.344
+        "stop_level": null,
+        "last_close": 47.5
       },
-      {
-        "ticker": "ADEA",
-        "action": "BUY",
-        "reason": "NEW_ENTRY",
-        "target_w": 0.125,
-        "stop_pct": null,
+      "ADEA": {
+        "value": 0.12520750870452743,
+        "cost_basis": 0.12581390245531496,
+        "entry_date": "2026-10-02",
+        "entry_px": 25.8,
+        "level": 0.9976744186046511,
+        "peak": 1.0,
+        "missing": 0,
         "entry_pct": 8.33,
-        "entry_conf": 0.4482,
         "entry_exp_real": 15.39,
         "entry_exp_nominal": 19.9,
         "entry_hurdle": 14.76,
-        "entry_p_beat_all": 0.344
+        "entry_p_beat_all": 0.344,
+        "entry_conf": 0.4482,
+        "stop_level": null,
+        "last_close": 25.74
       }
-    ],
+    },
+    "pending": [],
     "last_rebalance_month": "2026-10",
     "start_date": "2026-09-30",
-    "nav": 0.9960573323387578,
+    "nav": 0.9978459245535315,
     "cohorts": [
       {
         "month": "2026-09",
@@ -229,7 +214,7 @@
         }
       }
     ],
-    "last_date": "2026-10-01"
+    "last_date": "2026-10-02"
   },
   "model": {
     "champion_weights": {
@@ -426,11 +411,11 @@
   "regime": {
     "label": "NEUTRAL",
     "probs": {
-      "RISK_OFF": 0.0009,
-      "NEUTRAL": 0.96,
-      "RISK_ON": 0.0391
+      "RISK_OFF": 0.0024,
+      "NEUTRAL": 0.9231,
+      "RISK_ON": 0.0745
     },
-    "p_risk_off": 0.0009,
+    "p_risk_off": 0.0024,
     "degraded": true,
     "params": {
       "K": 3,
@@ -520,7 +505,7 @@
       "fit_date": "2026-09-30"
     },
     "last_fit": "2026-09-30",
-    "exp_mkt_5d_pct": 0.19,
+    "exp_mkt_5d_pct": 0.191,
     "exp_mkt_12m_pct": 10.71,
     "argmax_history": [
       "NEUTRAL",
@@ -561,33 +546,33 @@
     "healthy_streak": 0,
     "feature_baseline": {
       "change_pct": {
-        "median": -0.4812434138649149,
-        "q25": -1.4372289763004027,
-        "q75": 0.5055826839682043,
-        "mad": 0.9677421805481459,
-        "n": 2010
+        "median": -0.4276653045648217,
+        "q25": -1.3931903475596603,
+        "q75": 0.5652450313497914,
+        "mad": 0.9756089780420247,
+        "n": 2003
       },
       "log_value_traded": {
-        "median": 16.660305535080038,
-        "q25": 15.659810608682777,
-        "q75": 17.55154414422913,
-        "mad": 0.9417655471035327,
-        "n": 2010
+        "median": 16.655512669754195,
+        "q25": 15.656424813748082,
+        "q75": 17.54521306999271,
+        "mad": 0.9402002913895565,
+        "n": 2003
       }
     },
     "reason": "HEALTHY",
     "last_transition": null,
-    "last_evaluation": "2026-10-02T01:06:15.555753+00:00",
+    "last_evaluation": "2026-10-03T00:43:23.859248+00:00",
     "self_test": {
       "passed": true,
       "cases": 16,
       "passed_cases": 16,
-      "timestamp": "2026-10-02T01:06:15.554078+00:00"
+      "timestamp": "2026-10-03T00:43:23.856978+00:00"
     },
-    "drift_score": 0.1647,
+    "drift_score": 0.1763,
     "performance_drift": 0.0,
     "performance_detail": {},
-    "ops_score": 94.97,
+    "ops_score": 95.05,
     "regime_stress": 0.5,
     "exposure_multiplier": 0.6,
     "pct_cutoff_add": 3.0,
@@ -2719,24 +2704,64 @@
     "LWAC": "Finance",
     "QLEP": "Finance",
     "WLKP": "Process Industries",
-    "BLZR": "Finance"
+    "BLZR": "Finance",
+    "QBTS": "Electronic Technology",
+    "CGON": "Health Technology",
+    "TBCH": "Consumer Durables",
+    "TVAI": "Finance",
+    "ALMU": "Commercial Services",
+    "FACT": "Finance",
+    "RGC": "Health Technology",
+    "BCSS": "Finance",
+    "GCGR": "Finance",
+    "SOUL": "Finance",
+    "OACC": "Finance",
+    "ITHA": "Finance",
+    "QADR": "Finance",
+    "KCHV": "Finance",
+    "ULH": "Transportation",
+    "FTW": "Energy Minerals",
+    "GCBC": "Finance",
+    "CAMP": "Health Technology",
+    "STRW": "Finance",
+    "AUNA": "Health Services",
+    "SZZL": "Finance",
+    "FVCB": "Finance",
+    "NXDT": "Finance",
+    "EPR/PC": "Finance",
+    "NWFL": "Finance",
+    "MKLY": "Finance",
+    "PTOR": "Finance",
+    "NHPBP": "Finance",
+    "XSLL": "Finance",
+    "MFA/PB": "Finance",
+    "MFIN": "Finance",
+    "EVAC": "Finance",
+    "LPBB": "Finance",
+    "OFLX": "Producer Manufacturing",
+    "TCI": "Finance",
+    "CEPF": "Finance",
+    "GIW": "Finance",
+    "GSRF": "Finance",
+    "GENC": "Producer Manufacturing",
+    "DNMX": "Finance"
   },
   "performance": {
     "nav": {
       "start": "2026-09-30",
-      "end": "2026-10-01",
-      "days": 2,
-      "total_return_pct": 0.77,
-      "cagr_pct": 1566.14,
+      "end": "2026-10-02",
+      "days": 3,
+      "total_return_pct": 0.95,
+      "cagr_pct": 466.48,
       "max_drawdown_pct": 0.0,
-      "ann_vol_pct": 6.14,
+      "ann_vol_pct": 5.24,
       "avg_exposure_pct": 100.0,
       "benchmarks_total_pct": {
         "cpi": null,
         "usd": null,
-        "gold": 0.03,
-        "deposit": 0.01,
-        "xu100": 0.0,
+        "gold": -0.35,
+        "deposit": 0.02,
+        "xu100": 0.41,
         "floor": null,
         "hurdle": null
       }
@@ -2754,29 +2779,49 @@
     },
     "open_positions": {
       "CNXN": {
-        "w": 0.2067,
-        "ret_pct": 3.29,
+        "w": 0.1001,
+        "ret_pct": 3.08,
         "since": "2026-09-30"
       },
       "XMAX": {
-        "w": 0.1955,
-        "ret_pct": -1.62,
+        "w": 0.1013,
+        "ret_pct": -0.46,
         "since": "2026-10-01"
       },
       "RSKD": {
-        "w": 0.1988,
-        "ret_pct": 0.13,
+        "w": 0.0988,
+        "ret_pct": -0.76,
         "since": "2026-10-01"
       },
       "MTW": {
-        "w": 0.2049,
-        "ret_pct": 3.23,
+        "w": 0.1027,
+        "ret_pct": 7.0,
         "since": "2026-10-01"
       },
       "XRX": {
-        "w": 0.1941,
-        "ret_pct": -0.95,
+        "w": 0.0959,
+        "ret_pct": -4.73,
         "since": "2026-10-01"
+      },
+      "UVSP": {
+        "w": 0.1268,
+        "ret_pct": 0.65,
+        "since": "2026-10-02"
+      },
+      "IBCP": {
+        "w": 0.1268,
+        "ret_pct": 0.61,
+        "since": "2026-10-02"
+      },
+      "WLY": {
+        "w": 0.1221,
+        "ret_pct": -3.02,
+        "since": "2026-10-02"
+      },
+      "ADEA": {
+        "w": 0.1255,
+        "ret_pct": -0.23,
+        "since": "2026-10-02"
       }
     }
   },
@@ -2893,19 +2938,19 @@
     "cash_target": 0.0
   },
   "last_run": {
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "status": "OK",
-    "fingerprint": "2718.9250|581574293",
+    "fingerprint": "3047.6650|597579877",
     "mode": "EOD",
-    "monthly_review": true,
-    "utc": "2026-10-02T01:14:30.928123Z"
+    "monthly_review": false,
+    "utc": "2026-10-03T00:43:23.877497Z"
   },
   "data_quality": {
     "ok": true,
-    "score": 93.3,
-    "rows": 2010,
-    "invalid_rows": 0,
-    "recommended_missing_rate": 0.111,
+    "score": 93.4,
+    "rows": 2003,
+    "invalid_rows": 1,
+    "recommended_missing_rate": 0.1092,
     "fetch": {
       "source": "tradingview",
       "fields": {
@@ -2923,22 +2968,22 @@
         "div_yield": "dividends_yield_current",
         "shares": "total_shares_outstanding_fundamental"
       },
-      "rows": 2010
+      "rows": 2004
     }
   },
   "cash_rate": {
     "series": "DTB3",
     "source": "fred_api_dtb3",
-    "last_month": "2026-09-01",
-    "net_yield_pct": 3.94
+    "last_month": "2026-10-01",
+    "net_yield_pct": 4.0
   },
   "hurdles": {
     "cpi": 3.91,
     "usd": null,
     "gold": 3.91,
-    "deposit": 3.94,
-    "hurdle": 14.76,
-    "floor": 3.94,
+    "deposit": 4.0,
+    "hurdle": 14.82,
+    "floor": 4.0,
     "binding": "deposit",
     "mode": "sum",
     "edge": 3.0
@@ -2993,15 +3038,15 @@
     ]
   },
   "health": {
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "overall": "OK",
     "checks": [
       {
         "key": "scan",
         "name": "Veri: hisse taraması",
         "status": "OK",
-        "msg": "TradingView 2010 hisse döndürdü",
-        "value": 2010
+        "msg": "TradingView 2003 hisse döndürdü",
+        "value": 2003
       },
       {
         "key": "cpi",
@@ -3021,7 +3066,7 @@
         "key": "run",
         "name": "Günlük çalışma",
         "status": "OK",
-        "msg": "son kapanış işlemi 2026-10-01 (0 iş günü önce)",
+        "msg": "son kapanış işlemi 2026-10-02 (0 iş günü önce)",
         "value": 0
       },
       {
@@ -3064,7 +3109,7 @@
         "name": "Test: bilanço verisi",
         "status": "OK",
         "msg": "geçmiş testte hisselerin %59'inde bilanço vardı",
-        "value": 0.587
+        "value": 0.586
       },
       {
         "key": "model_age",
@@ -3077,50 +3122,50 @@
         "key": "live",
         "name": "Canlı sonuç vs test",
         "status": "OK",
-        "msg": "canlı geçmiş kısa (0.0 ay); 1 aydan sonra ölçülür",
+        "msg": "canlı geçmiş kısa (0.1 ay); 1 aydan sonra ölçülür",
         "value": null
       }
     ],
     "live_vs_test": {
-      "months": 0.0,
-      "live_ret_pct": 0.77,
+      "months": 0.1,
+      "live_ret_pct": 0.95,
       "live_xu100_pct": null,
       "status": "WAIT"
     },
     "win_rates": {
       "closed_lots": {
         "live": 4,
-        "test": 171
+        "test": 173
       },
       "hit_nominal_pct": {
         "live": 25.0,
-        "test": 65.5
+        "test": 65.3
       },
       "hit_beat_xu100_pct": {
         "live": null,
-        "test": 43.3
+        "test": 42.2
       },
       "hit_beat_cpi_pct": {
         "live": null,
-        "test": 60.9
+        "test": 60.6
       },
       "hit_beat_all_pct": {
         "live": null,
-        "test": 36.1
+        "test": 40.6
       },
       "avg_nominal_pct": {
         "live": -1.2,
-        "test": 6.84
+        "test": 7.16
       },
       "avg_months_held": {
         "live": 0.0,
-        "test": 13.2
+        "test": 13.5
       }
     },
     "red": [],
     "yellow": []
   },
-  "last_eod_date": "2026-10-01",
+  "last_eod_date": "2026-10-02",
   "target_hunter": {
     "positions": {},
     "pending": [
